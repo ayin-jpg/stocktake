@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Stocktake</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a;
+    --border:#2e3348; --border2:#3d4260;
+    --accent:#4f8ef7; --accent2:#6ba3ff;
+    --success:#34d399; --warning:#fbbf24; --danger:#f87171;
+    --text:#f0f2ff; --text2:#8b90b0; --text3:#555a7a;
+    --mono:'DM Mono',monospace; --sans:'DM Sans',sans-serif;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+  .screen{display:none;min-height:100vh;flex-direction:column}
+  .screen.active{display:flex}
+
+  /* login */
+  #loginScreen{align-items:center;justify-content:center;padding:2rem 1.5rem;position:relative;overflow:hidden}
+  #loginScreen::before{content:'';position:absolute;width:400px;height:400px;background:radial-gradient(circle,rgba(79,142,247,.12) 0%,transparent 70%);top:-100px;right:-100px;pointer-events:none}
+  #loginScreen::after{content:'';position:absolute;width:300px;height:300px;background:radial-gradient(circle,rgba(52,211,153,.08) 0%,transparent 70%);bottom:0;left:-50px;pointer-events:none}
+
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem 2rem;width:100%;max-width:420px;position:relative;z-index:1}
+  .logo-mark{width:52px;height:52px;background:var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;font-size:24px}
+  .login-title{font-size:26px;font-weight:600;letter-spacing:-.5px;margin-bottom:4px}
+  .login-sub{font-size:14px;color:var(--text2);margin-bottom:2rem}
+  .field-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;display:block}
+  .field-group{margin-bottom:1.25rem}
+
+  select,input[type=text],input[type=number]{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:15px;padding:12px 14px;outline:none;transition:border-color .2s;appearance:none;-webkit-appearance:none}
+  select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.15)}
+  select option{background:var(--surface2)}
+
+  .btn{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:var(--accent2);transform:translateY(-1px)}
+  .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}
+  .btn-ghost:hover{border-color:var(--border2);color:var(--text)}
+  .btn-success{background:var(--success);color:#0a1a12;font-weight:600}
+  .btn-warning{background:var(--warning);color:#1a0f00;font-weight:600}
+  .btn-danger{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:var(--danger)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
+
+  /* topbar */
+  .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+  .topbar-title{font-size:16px;font-weight:600;flex:1}
+  .topbar-sub{font-size:12px;color:var(--text2)}
+  .avatar{width:34px;height:34px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
+
+  /* task list */
+  .screen-body{flex:1;padding:16px;overflow-y:auto}
+  .stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 12px;text-align:center}
+  .stat-num{font-family:var(--mono);font-size:24px;font-weight:500;line-height:1;margin-bottom:4px}
+  .stat-num.green{color:var(--success)} .stat-num.amber{color:var(--warning)} .stat-num.blue{color:var(--accent)}
+  .stat-label{font-size:11px;color:var(--text2)}
+
+  .zone-banner{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  .zone-pill{background:rgba(79,142,247,.15);color:var(--accent2);font-family:var(--mono);font-size:13px;font-weight:500;padding:4px 10px;border-radius:20px;white-space:nowrap}
+  .zone-info{flex:1;font-size:13px;color:var(--text2)}
+  .zone-info strong{color:var(--text);font-size:14px}
+
+  .section-label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;margin-top:4px}
+
+  .task-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:14px}
+  .task-card:hover{border-color:var(--border2);background:var(--surface2)}
+  .task-card:active{transform:scale(.99)}
+  .task-card.recount{border-left:3px solid var(--warning)}
+  .task-card.done{opacity:.45}
+  .task-card.new-zone{border-left:3px solid var(--success)}
+
+  .task-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+  .task-icon.pending{background:rgba(79,142,247,.12)}
+  .task-icon.recount{background:rgba(251,191,36,.12)}
+  .task-icon.done{background:rgba(52,211,153,.12)}
+  .task-icon.new{background:rgba(52,211,153,.12)}
+
+  .task-info{flex:1;min-width:0}
+  .task-loc{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent2);margin-bottom:2px}
+  .task-sku{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+  .task-desc{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .task-meta{text-align:right;flex-shrink:0}
+
+  .badge{display:inline-block;font-size:10px;font-weight:500;padding:3px 8px;border-radius:20px}
+  .badge-pending{background:rgba(79,142,247,.15);color:var(--accent2)}
+  .badge-recount{background:rgba(251,191,36,.15);color:var(--warning)}
+  .badge-done{background:rgba(52,211,153,.15);color:var(--success)}
+  .badge-new{background:rgba(52,211,153,.2);color:var(--success);border:1px solid rgba(52,211,153,.3)}
+  .chevron{color:var(--text3);font-size:18px;line-height:1}
+
+  /* zone complete card */
+  .zone-complete-card{background:var(--surface);border:1px solid rgba(52,211,153,.3);border-radius:var(--radius);padding:20px;margin-bottom:16px;text-align:center}
+  .zone-complete-icon{font-size:40px;margin-bottom:10px}
+  .zone-complete-title{font-size:17px;font-weight:600;color:var(--success);margin-bottom:6px}
+  .zone-complete-sub{font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.5}
+  .next-zone-preview{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;text-align:left}
+  .next-zone-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+  .next-zone-name{font-family:var(--mono);font-size:18px;color:var(--accent2);font-weight:500;margin-bottom:2px}
+  .next-zone-count{font-size:13px;color:var(--text2)}
+
+  /* count form */
+  .count-header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px}
+  .loc-tag{font-family:var(--mono);font-size:12px;color:var(--accent2);background:rgba(79,142,247,.1);border-radius:6px;padding:3px 8px;display:inline-block;margin-bottom:6px}
+  .count-sku{font-size:20px;font-weight:600;margin-bottom:4px;letter-spacing:-.3px}
+  .count-desc{font-size:14px;color:var(--text2)}
+  .recount-banner{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);border-radius:var(--radius-sm);padding:10px 14px;margin:16px 16px 0;font-size:13px;color:var(--warning);display:flex;align-items:center;gap:8px}
+
+  .qty-input-wrap{padding:20px 16px 8px}
+  .qty-display{font-family:var(--mono);font-size:64px;font-weight:500;text-align:center;padding:16px 0;letter-spacing:-2px;min-height:100px;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;cursor:text;transition:border-color .2s}
+  .qty-display.zero{color:var(--text3)}
+
+  .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 16px 16px}
+  .numpad-btn{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:22px;font-weight:500;padding:18px 0;cursor:pointer;transition:all .1s;text-align:center;-webkit-user-select:none;user-select:none}
+  .numpad-btn:active{background:var(--surface2);transform:scale(.96);border-color:var(--border2)}
+  .numpad-btn.del{color:var(--text2);font-size:18px}
+
+  .notes-area{padding:0 16px 16px}
+  textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:14px;padding:12px 14px;outline:none;resize:none;height:72px;transition:border-color .2s}
+  textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.15)}
+  textarea::placeholder{color:var(--text3)}
+  .submit-area{padding:0 16px 32px;display:flex;flex-direction:column;gap:10px}
+
+  /* supervisor */
+  .sup-tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;overflow-x:auto}
+  .sup-tab{padding:14px 16px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;flex-shrink:0}
+  .sup-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab-content{display:none;padding:16px}
+  .tab-content.active{display:block}
+
+  .progress-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .progress-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .progress-name{font-size:14px;font-weight:500}
+  .progress-zone-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+  .progress-zone-tag{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.1);color:var(--accent2)}
+  .progress-zone-tag.done{background:rgba(52,211,153,.1);color:var(--success)}
+  .progress-frac{font-family:var(--mono);font-size:12px;color:var(--text2)}
+  .progress-bar-wrap{background:var(--surface2);border-radius:4px;height:6px;overflow:hidden}
+  .progress-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s ease}
+  .progress-bar-fill.full{background:var(--success)}
+
+  .zone-queue-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .zone-queue-title{font-size:14px;font-weight:500;margin-bottom:10px}
+  .zone-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .zone-row:last-child{border-bottom:none}
+  .zone-code{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent2);min-width:60px}
+  .zone-status{font-size:12px;flex:1}
+  .zone-status.available{color:var(--text2)}
+  .zone-status.in-progress{color:var(--warning)}
+  .zone-status.complete{color:var(--success)}
+
+  .var-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .var-row.positive{border-left:3px solid var(--success)}
+  .var-row.negative{border-left:3px solid var(--danger)}
+  .var-info .var-sku{font-family:var(--mono);font-size:12px;color:var(--accent2)}
+  .var-info .var-loc{font-size:13px;color:var(--text2)}
+  .var-num{font-family:var(--mono);font-size:18px;font-weight:500}
+  .var-num.pos{color:var(--success)} .var-num.neg{color:var(--danger)}
+
+  /* toast / loading */
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 20px;font-size:14px;z-index:999;transition:transform .3s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;max-width:90vw}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast.success{border-color:rgba(52,211,153,.4);color:var(--success)}
+  .toast.error{border-color:rgba(248,113,113,.4);color:var(--danger)}
+
+  .spinner{width:20px;height:20px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-overlay{position:fixed;inset:0;background:rgba(15,17,23,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:998;gap:16px;font-size:14px;color:var(--text2)}
+  .loading-overlay.show{display:flex}
+
+  .empty-state{text-align:center;padding:3rem 1rem;color:var(--text3)}
+  .empty-icon{font-size:48px;margin-bottom:12px}
+  .empty-title{font-size:16px;color:var(--text2);margin-bottom:6px}
+  .empty-sub{font-size:13px}
+
+  .filter-row{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:2px}
+  .filter-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;font-family:var(--sans);cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
+  .filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  .search-box{position:relative;margin-bottom:14px}
+  .search-box input{padding-left:36px}
+  .search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:15px;pointer-events:none}
+
+  .divider{border:none;border-top:1px solid var(--border);margin:16px 0}
+
+  .config-note{background:rgba(79,142,247,.08);border:1px solid rgba(79,142,247,.2);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--accent2);line-height:1.6;margin-bottom:20px}
+
+  /* zone complete modal overlay */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:none;align-items:flex-end;justify-content:center}
+  .modal-overlay.show{display:flex}
+  .modal-sheet{background:var(--surface);border-radius:20px 20px 0 0;border:1px solid var(--border);border-bottom:none;padding:24px 20px 48px;width:100%;max-width:480px;animation:slideUp .3s cubic-bezier(.34,1.2,.64,1)}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 20px}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><span id="loadingMsg">Loading...</span></div>
+<div class="toast" id="toast"></div>
+
+<!-- ══ ZONE COMPLETE MODAL ══ -->
+<div class="modal-overlay" id="zoneCompleteModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:48px;margin-bottom:10px;">🎉</div>
+      <div style="font-size:20px;font-weight:600;color:var(--success);margin-bottom:6px;">Zone complete!</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.6;" id="zoneCompleteMsg">You've finished counting all SKUs in this zone.</div>
+    </div>
+    <div id="nextZonePreview" style="margin-bottom:16px;"></div>
+    <button class="btn btn-success" id="acceptNextZoneBtn" onclick="acceptNextZone()" style="margin-bottom:10px;">Load next zone</button>
+    <button class="btn btn-ghost" id="noMoreZonesBtn" onclick="closeZoneModal()" style="display:none;">All zones complete — I'm done</button>
+    <button class="btn btn-ghost" id="declineNextZoneBtn" onclick="closeZoneModal()">Take a break first</button>
+  </div>
+</div>
+
+<!-- ══ SCREEN 1: CONFIG ══ -->
+<div class="screen active" id="configScreen">
+  <div style="align-items:center;justify-content:center;display:flex;flex-direction:column;min-height:100vh;padding:2rem 1.5rem;">
+    <div class="login-card" style="max-width:460px;">
+      <div class="logo-mark">📦</div>
+      <div class="login-title">Connect your sheet</div>
+      <div class="login-sub">One-time setup — paste your Google Apps Script URL below.</div>
+      <div class="config-note">
+        <strong>How to get this URL:</strong><br>
+        1. Open your Stocktake Master Google Sheet<br>
+        2. Click <strong>Extensions → Apps Script</strong><br>
+        3. Paste the Apps Script code from the .js file provided<br>
+        4. Click <strong>Deploy → New deployment → Web app</strong><br>
+        5. Set "Who has access" to <strong>Anyone</strong><br>
+        6. Copy the Web App URL and paste it here
+      </div>
+      <div class="field-group">
+        <label class="field-label">Apps Script Web App URL</label>
+        <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/..."/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Your name (supervisor)</label>
+        <input type="text" id="supervisorName" placeholder="e.g. Sarah"/>
+      </div>
+      <button class="btn btn-primary" onclick="saveConfig()" style="margin-bottom:10px;">Save & connect</button>
+      <button class="btn btn-ghost" onclick="useDemoMode()">Try demo mode (no sheet needed)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 2: LOGIN ══ -->
+<div class="screen" id="loginScreen">
+  <div style="align-items:center;justify-content:center;display:flex;flex-direction:column;min-height:100vh;padding:2rem 1.5rem;position:relative;overflow:hidden;">
+    <div style="position:absolute;width:500px;height:500px;background:radial-gradient(circle,rgba(79,142,247,.1) 0%,transparent 65%);top:-150px;right:-150px;pointer-events:none;"></div>
+    <div style="position:absolute;width:400px;height:400px;background:radial-gradient(circle,rgba(52,211,153,.07) 0%,transparent 65%);bottom:-100px;left:-100px;pointer-events:none;"></div>
+    <div class="login-card" style="position:relative;z-index:1;">
+      <div class="logo-mark">📦</div>
+      <div class="login-title">Stocktake</div>
+      <div class="login-sub" id="loginDate">Loading...</div>
+      <div class="field-group">
+        <label class="field-label">Who are you?</label>
+        <select id="staffSelect"><option value="">— Select your name —</option></select>
+      </div>
+      <button class="btn btn-primary" onclick="handleLogin()" id="loginBtn" disabled>Start counting</button>
+      <hr class="divider">
+      <button class="btn btn-ghost" style="font-size:13px;" onclick="showSupervisor()">⚙ Supervisor access</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 3: TASK LIST ══ -->
+<div class="screen" id="taskScreen">
+  <div class="topbar">
+    <div class="avatar" id="counterAvatar">?</div>
+    <div>
+      <div class="topbar-title" id="counterNameDisplay">Counter</div>
+      <div class="topbar-sub" id="taskProgress">0 tasks remaining</div>
+    </div>
+    <button class="btn btn-ghost" style="width:auto;padding:7px 14px;font-size:13px;" onclick="logout()">Done</button>
+  </div>
+  <div class="screen-body">
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-num blue" id="statTotal">0</div><div class="stat-label">Total</div></div>
+      <div class="stat-card"><div class="stat-num amber" id="statPending">0</div><div class="stat-label">Pending</div></div>
+      <div class="stat-card"><div class="stat-num green" id="statDone">0</div><div class="stat-label">Done</div></div>
+    </div>
+
+    <!-- Zone complete card — shown when current zone is fully counted -->
+    <div id="zoneCompleteCard" style="display:none;" class="zone-complete-card">
+      <div class="zone-complete-icon">✅</div>
+      <div class="zone-complete-title" id="zoneCompleteCardTitle">Zone done!</div>
+      <div class="zone-complete-sub" id="zoneCompleteCardSub">Tap below to get your next zone.</div>
+      <button class="btn btn-warning" onclick="checkForNextZone()">I'm done — get next zone</button>
+    </div>
+
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setFilter('pending',this)">Pending</button>
+      <button class="filter-btn" onclick="setFilter('recount',this)">Recount</button>
+      <button class="filter-btn" onclick="setFilter('done',this)">Done</button>
+    </div>
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Search SKU or location..." oninput="renderTasks()">
+    </div>
+    <div id="taskList"></div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 4: COUNT ENTRY ══ -->
+<div class="screen" id="countScreen">
+  <div class="topbar">
+    <button onclick="backToTasks()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0;line-height:1;">‹</button>
+    <div style="flex:1;"><div class="topbar-title">Enter count</div></div>
+  </div>
+  <div class="count-header">
+    <div class="loc-tag" id="countLoc">—</div>
+    <div class="count-sku" id="countSku">—</div>
+    <div class="count-desc" id="countDesc">—</div>
+  </div>
+  <div id="recountBanner" class="recount-banner" style="display:none;">
+    ⚠ Recount — previous count was <strong id="prevCountDisplay">—</strong>. Enter new quantity.
+  </div>
+  <div class="qty-input-wrap">
+    <div class="qty-display zero" id="qtyDisplay">0</div>
+  </div>
+  <div class="numpad">
+    <button class="numpad-btn" onclick="numpadPress('1')">1</button>
+    <button class="numpad-btn" onclick="numpadPress('2')">2</button>
+    <button class="numpad-btn" onclick="numpadPress('3')">3</button>
+    <button class="numpad-btn" onclick="numpadPress('4')">4</button>
+    <button class="numpad-btn" onclick="numpadPress('5')">5</button>
+    <button class="numpad-btn" onclick="numpadPress('6')">6</button>
+    <button class="numpad-btn" onclick="numpadPress('7')">7</button>
+    <button class="numpad-btn" onclick="numpadPress('8')">8</button>
+    <button class="numpad-btn" onclick="numpadPress('9')">9</button>
+    <button class="numpad-btn del" onclick="numpadPress('del')">⌫</button>
+    <button class="numpad-btn" onclick="numpadPress('0')">0</button>
+    <button class="numpad-btn" onclick="numpadPress('.')">.</button>
+  </div>
+  <div class="notes-area">
+    <label class="field-label">Notes (optional)</label>
+    <textarea id="countNotes" placeholder="e.g. damaged stock, split location, overflow bin checked"></textarea>
+  </div>
+  <div class="submit-area">
+    <button class="btn btn-success" onclick="submitCount()" id="submitBtn">Submit count</button>
+    <button class="btn btn-ghost" onclick="backToTasks()">Cancel</button>
+  </div>
+</div>
+
+<!-- ══ SCREEN 5: SUPERVISOR ══ -->
+<div class="screen" id="supervisorScreen">
+  <div class="topbar">
+    <div><div class="topbar-title">Supervisor</div><div class="topbar-sub" id="supDate">—</div></div>
+    <button class="btn btn-ghost" style="width:auto;padding:7px 14px;font-size:13px;" onclick="showScreen('loginScreen')">Back</button>
+  </div>
+  <div class="sup-tabs">
+    <div class="sup-tab active" onclick="supTab('overview',this)">Overview</div>
+    <div class="sup-tab" onclick="supTab('counters',this)">Counters</div>
+    <div class="sup-tab" onclick="supTab('zones',this)">Zone queue</div>
+    <div class="sup-tab" onclick="supTab('variances',this)">Variances</div>
+    <div class="sup-tab" onclick="supTab('settings',this)">Settings</div>
+  </div>
+  <div style="flex:1;overflow-y:auto;">
+
+    <div class="tab-content active" id="tab-overview">
+      <div class="stats-row" style="grid-template-columns:repeat(2,1fr);">
+        <div class="stat-card"><div class="stat-num blue" id="supTotal">—</div><div class="stat-label">Total SKUs</div></div>
+        <div class="stat-card"><div class="stat-num green" id="supDone">—</div><div class="stat-label">Counted</div></div>
+        <div class="stat-card"><div class="stat-num amber" id="supPending">—</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card"><div class="stat-num" id="supVariances" style="color:var(--danger)">—</div><div class="stat-label">Variances</div></div>
+      </div>
+      <div class="section-label">Overall progress</div>
+      <div class="progress-card">
+        <div class="progress-top">
+          <span class="progress-name">All locations</span>
+          <span class="progress-frac" id="supProgressFrac">0 / 0</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" id="supProgressFill" style="width:0%"></div></div>
+      </div>
+      <button class="btn btn-ghost" style="margin-top:8px;" onclick="loadSupervisorData()">↻ Refresh</button>
+    </div>
+
+    <div class="tab-content" id="tab-counters">
+      <div class="section-label">Counter progress</div>
+      <div id="counterProgress"></div>
+    </div>
+
+    <div class="tab-content" id="tab-zones">
+      <div class="section-label">Zone allocation queue</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">Zones are assigned in sequence. When a counter finishes, the next available zone is automatically allocated to them.</div>
+      <div id="zoneQueueList"></div>
+    </div>
+
+    <div class="tab-content" id="tab-variances">
+      <div class="section-label">Items with variance</div>
+      <div id="varianceList"></div>
+    </div>
+
+    <div class="tab-content" id="tab-settings">
+      <div class="section-label">Configuration</div>
+      <div class="field-group">
+        <label class="field-label">Apps Script URL</label>
+        <input type="text" id="settingsUrl" placeholder="https://script.google.com/..."/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Supervisor name</label>
+        <input type="text" id="settingsSupervisor"/>
+      </div>
+      <button class="btn btn-primary" onclick="updateConfig()" style="margin-bottom:10px;">Save settings</button>
+      <button class="btn btn-danger" onclick="resetApp()">Reset app</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────
+const CONFIG_KEY  = 'stocktake_config';
+const SESSION_KEY = 'stocktake_session';
+
+let config  = JSON.parse(localStorage.getItem(CONFIG_KEY)  || 'null');
+let session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+let allTasks     = [];   // tasks for current counter
+let currentTask  = null;
+let qtyStr       = '0';
+let taskFilter   = 'all';
+let demoMode     = false;
+let pendingNextZone = null; // zone object queued up for acceptance
+
+// ── DEMO DATA ───────────────────────────────────────────────
+const DEMO_STAFF = ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Henry','Isla','Jake','Karen','Leo','Mia','Noah','Olivia'];
+const ALL_ZONES  = ['BA','BB','BC','BD','BE','BF','BG','BH','BI','BJ'];
+
+function makeDemoTasks(staffName, zones, startId=1) {
+  const skuPool = [
+    ['Widget Alpha','WA'],['Widget Beta','WB'],['Gadget Pro','GP'],
+    ['Gadget Lite','GL'],['Component X','CX'],['Component Y','CY'],
+    ['Part Alpha','PA'],['Part Beta','PB'],['Assembly A','AA'],['Unit B','UB']
+  ];
+  let tasks = []; let id = startId;
+  zones.forEach(zone => {
+    const count = 3 + Math.floor(Math.random()*3);
+    for (let i=0;i<count;i++) {
+      const [desc] = skuPool[(id-1) % skuPool.length];
+      const skuNum = String(id).padStart(5,'0');
+      tasks.push({
+        rowId: id++, locationCode: zone+'0'+Math.ceil(i/2)+'A0'+((i%2)+1),
+        zone, sku:'SKU-'+skuNum, description:desc,
+        assignedTo:staffName, taskType:'Count',
+        status:'Pending', submittedQty:'', expectedQty: 5+Math.floor(Math.random()*50), notes:''
+      });
+    }
+  });
+  return tasks;
+}
+
+function generateDemoAllTasks() {
+  let tasks=[]; let id=1;
+  DEMO_STAFF.slice(0,8).forEach((name,ni) => {
+    const zone = ALL_ZONES[ni % ALL_ZONES.length];
+    const zTasks = makeDemoTasks(name, [zone], id);
+    id += zTasks.length;
+    // randomly mark some done
+    zTasks.forEach(t => {
+      if (Math.random()>0.6) { t.status='Complete'; t.submittedQty=5+Math.floor(Math.random()*40); }
+    });
+    tasks = tasks.concat(zTasks);
+  });
+  return tasks;
+}
+
+// ── INIT ────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  document.getElementById('loginDate').textContent = today;
+  document.getElementById('supDate').textContent   = today;
+  if (!config) {
+    showScreen('configScreen');
+  } else {
+    document.getElementById('settingsUrl').value       = config.scriptUrl||'';
+    document.getElementById('settingsSupervisor').value = config.supervisorName||'';
+    session ? loadCounterSession() : initLogin();
+  }
+});
+
+// ── SCREENS ─────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+// ── CONFIG ───────────────────────────────────────────────────
+function saveConfig() {
+  const url = document.getElementById('scriptUrl').value.trim();
+  const sup = document.getElementById('supervisorName').value.trim();
+  if (!url) { showToast('Please enter your Apps Script URL','error'); return; }
+  config = { scriptUrl:url, supervisorName:sup||'Supervisor' };
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  showToast('Connected!','success');
+  initLogin();
+}
+function updateConfig() {
+  config = { scriptUrl:document.getElementById('settingsUrl').value.trim(), supervisorName:document.getElementById('settingsSupervisor').value.trim() };
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  showToast('Settings saved','success');
+}
+function resetApp() {
+  if (confirm('Reset all app settings? This does not affect your spreadsheet.')) {
+    localStorage.removeItem(CONFIG_KEY); localStorage.removeItem(SESSION_KEY); location.reload();
+  }
+}
+function useDemoMode() {
+  demoMode=true; config={scriptUrl:'',supervisorName:'Supervisor'}; initLogin();
+}
+
+// ── LOGIN ────────────────────────────────────────────────────
+async function initLogin() {
+  showScreen('loginScreen');
+  const sel = document.getElementById('staffSelect');
+  sel.innerHTML = '<option value="">— Select your name —</option>';
+  const names = demoMode ? DEMO_STAFF : await fetchStaff();
+  names.forEach(n => { const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
+}
+
+async function fetchStaff() {
+  try {
+    showLoading('Loading staff list...');
+    const data = await apiCall({action:'getStaff'});
+    hideLoading();
+    return data.staff||DEMO_STAFF;
+  } catch(e) { hideLoading(); return DEMO_STAFF; }
+}
+
+document.getElementById('staffSelect').addEventListener('change', function() {
+  document.getElementById('loginBtn').disabled = !this.value;
+});
+
+async function handleLogin() {
+  const name = document.getElementById('staffSelect').value;
+  if (!name) return;
+  showLoading('Loading your tasks...');
+  try {
+    if (demoMode) {
+      allTasks = makeDemoTasks(name, [ALL_ZONES[DEMO_STAFF.indexOf(name) % ALL_ZONES.length]]);
+    } else {
+      const data = await apiCall({action:'getTasks', staff:name});
+      allTasks = data.tasks||[];
+      // If no tasks found, auto-claim the next available zone
+      if (allTasks.length === 0) {
+        allTasks = await autoClaimFirstZone(name);
+      }
+    }
+    session = {staff:name, loginTime:Date.now()};
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    hideLoading();
+    renderTaskScreen();
+    showScreen('taskScreen');
+  } catch(e) { hideLoading(); showToast('Failed to load tasks','error'); }
+}
+
+function loadCounterSession() {
+  const name = session.staff;
+  if (demoMode) {
+    allTasks = makeDemoTasks(name, [ALL_ZONES[DEMO_STAFF.indexOf(name) % ALL_ZONES.length]]);
+    renderTaskScreen(); showScreen('taskScreen'); return;
+  }
+  showLoading('Resuming session...');
+  apiCall({action:'getTasks', staff:name})
+    .then(async data => {
+      allTasks = data.tasks||[];
+      // If no tasks found on resume, auto-claim next available zone
+      if (allTasks.length === 0) {
+        allTasks = await autoClaimFirstZone(name);
+      }
+      hideLoading();
+      renderTaskScreen();
+      showScreen('taskScreen');
+    })
+    .catch(() => { hideLoading(); initLogin(); });
+}
+
+// Auto-claims the next available zone for a counter who has no tasks
+async function autoClaimFirstZone(staffName) {
+  try {
+    showLoading('Finding your zone...');
+    const nextData = await apiCall({action:'getNextZone', staff:staffName});
+    const nextZone = nextData.nextZone||null;
+    if (!nextZone) {
+      showToast('No zones available — speak to your supervisor','error');
+      return [];
+    }
+    showLoading(`Assigning zone ${nextZone.zone} to you...`);
+    const claimData = await apiCall({action:'claimZone', staff:staffName, zone:nextZone.zone});
+    const newTasks  = claimData.tasks||[];
+    if (newTasks.length > 0) {
+      showToast(`Zone ${nextZone.zone} assigned — ${newTasks.length} SKUs to count`,'success');
+    } else {
+      showToast('No tasks found — speak to your supervisor','error');
+    }
+    return newTasks;
+  } catch(e) {
+    showToast('Could not assign zone automatically','error');
+    return [];
+  }
+}
+
+function logout() {
+  localStorage.removeItem(SESSION_KEY); session=null; allTasks=[]; initLogin();
+}
+
+// ── TASK LIST ────────────────────────────────────────────────
+function setFilter(f,btn) {
+  taskFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderTasks();
+}
+
+function renderTaskScreen() {
+  const name = session.staff;
+  document.getElementById('counterNameDisplay').textContent = name;
+  document.getElementById('counterAvatar').textContent     = name.charAt(0).toUpperCase();
+
+  const total   = allTasks.length;
+  const done    = allTasks.filter(t=>t.status==='Complete').length;
+  const pending = total - done;
+
+  document.getElementById('statTotal').textContent   = total;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('statDone').textContent    = done;
+  document.getElementById('taskProgress').textContent = pending>0 ? `${pending} task${pending!==1?'s':''} remaining` : '✓ All done!';
+
+  // Show "I'm done" card when all current tasks are complete
+  const zoneCard = document.getElementById('zoneCompleteCard');
+  if (pending===0 && total>0) {
+    const zones = [...new Set(allTasks.map(t=>t.zone))].join(', ');
+    document.getElementById('zoneCompleteCardTitle').textContent = `Zone${zones.includes(',')?'s':''} ${zones} complete!`;
+    document.getElementById('zoneCompleteCardSub').textContent   = `All ${total} SKUs counted. Tap below to receive your next zone.`;
+    zoneCard.style.display = 'block';
+  } else {
+    zoneCard.style.display = 'none';
+  }
+
+  renderTasks();
+}
+
+function renderTasks() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  let filtered = allTasks.filter(t => {
+    if (taskFilter==='pending') return t.status==='Pending';
+    if (taskFilter==='recount') return t.taskType==='Recount';
+    if (taskFilter==='done')    return t.status==='Complete';
+    return true;
+  });
+  if (search) filtered = filtered.filter(t=>
+    t.sku.toLowerCase().includes(search)||
+    t.locationCode.toLowerCase().includes(search)||
+    t.description.toLowerCase().includes(search)
+  );
+
+  const container = document.getElementById('taskList');
+  if (!filtered.length) {
+    container.innerHTML=`<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-title">${taskFilter==='done'?'No completed tasks yet':'All caught up!'}</div><div class="empty-sub">${taskFilter==='pending'?'All tasks are complete':'Nothing matches your filter'}</div></div>`;
+    return;
+  }
+
+  // Group by zone then location
+  const groups={};
+  filtered.forEach(t=>{
+    const key=t.zone+'||'+t.locationCode;
+    if(!groups[key]) groups[key]=[];
+    groups[key].push(t);
+  });
+
+  let html=''; let lastZone='';
+  Object.keys(groups).sort().forEach(key=>{
+    const [zone,loc]=key.split('||');
+    if(zone!==lastZone) {
+      html+=`<div class="section-label" style="margin-top:${lastZone?'16px':'0'};">Zone ${zone}</div>`;
+      lastZone=zone;
+    }
+    groups[key].forEach(t=>{
+      const isDone=t.status==='Complete';
+      const isRecount=t.taskType==='Recount';
+      const isNew=t.isNew;
+      const iconClass=isDone?'done':isRecount?'recount':isNew?'new':'pending';
+      const icon=isDone?'✓':isRecount?'↩':isNew?'★':'○';
+      const badge=isDone
+        ?'<span class="badge badge-done">Done</span>'
+        :isRecount?'<span class="badge badge-recount">Recount</span>'
+        :isNew?'<span class="badge badge-new">New zone</span>'
+        :'<span class="badge badge-pending">Pending</span>';
+      html+=`
+        <div class="task-card ${isRecount&&!isDone?'recount':''} ${isDone?'done':''} ${isNew&&!isDone?'new-zone':''}"
+             onclick="${isDone?'':` openCount(${t.rowId})`}">
+          <div class="task-icon ${iconClass}">${icon}</div>
+          <div class="task-info">
+            <div class="task-loc">${t.locationCode}</div>
+            <div class="task-sku">${t.sku}</div>
+            <div class="task-desc">${t.description}</div>
+          </div>
+          <div class="task-meta">
+            ${badge}
+            ${isDone?`<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${t.submittedQty}</div>`:'<div class="chevron">›</div>'}
+          </div>
+        </div>`;
+    });
+  });
+  container.innerHTML=html;
+}
+
+// ── ZONE COMPLETION & NEXT ZONE ──────────────────────────────
+async function checkForNextZone() {
+  showLoading('Checking for next available zone...');
+  try {
+    let nextZone = null;
+
+    if (demoMode) {
+      // find first zone not already in allTasks
+      const usedZones = new Set(allTasks.map(t=>t.zone));
+      const next = ALL_ZONES.find(z=>!usedZones.has(z));
+      if (next) {
+        const count = 3+Math.floor(Math.random()*3);
+        nextZone = { zone:next, skuCount:count };
+      }
+    } else {
+      const data = await apiCall({action:'getNextZone', staff:session.staff});
+      nextZone = data.nextZone||null;
+    }
+
+    hideLoading();
+
+    // show modal regardless — either with next zone or all-done message
+    pendingNextZone = nextZone;
+    showZoneCompleteModal(nextZone);
+
+  } catch(e) {
+    hideLoading();
+    showToast('Could not check for next zone. Try again.','error');
+  }
+}
+
+function showZoneCompleteModal(nextZone) {
+  const preview   = document.getElementById('nextZonePreview');
+  const acceptBtn = document.getElementById('acceptNextZoneBtn');
+  const noMoreBtn = document.getElementById('noMoreZonesBtn');
+  const declineBtn= document.getElementById('declineNextZoneBtn');
+
+  const countedZones = [...new Set(allTasks.map(t=>t.zone))].join(', ');
+  document.getElementById('zoneCompleteMsg').textContent =
+    `You've finished all SKUs in zone${countedZones.includes(',')?'s':''} ${countedZones}.`;
+
+  if (nextZone) {
+    preview.innerHTML=`
+      <div class="next-zone-preview">
+        <div class="next-zone-label">Next zone available</div>
+        <div class="next-zone-name">${nextZone.zone}</div>
+        <div class="next-zone-count">${nextZone.skuCount} SKUs to count</div>
+      </div>`;
+    acceptBtn.style.display='flex';
+    noMoreBtn.style.display='none';
+    declineBtn.textContent='Take a break first';
+  } else {
+    preview.innerHTML=`
+      <div class="next-zone-preview" style="text-align:center;">
+        <div style="font-size:32px;margin-bottom:8px;">🏆</div>
+        <div style="font-size:15px;font-weight:500;color:var(--success);margin-bottom:4px;">All zones complete!</div>
+        <div style="font-size:13px;color:var(--text2);">Every zone has been counted or is already assigned to someone.</div>
+      </div>`;
+    acceptBtn.style.display='none';
+    noMoreBtn.style.display='flex';
+    declineBtn.style.display='none';
+  }
+
+  document.getElementById('zoneCompleteModal').classList.add('show');
+}
+
+async function acceptNextZone() {
+  if (!pendingNextZone) return;
+  // Save zone before closing modal — closeZoneModal sets pendingNextZone to null
+  const zoneToLoad = pendingNextZone.zone;
+  closeZoneModal();
+  showLoading(`Loading zone ${zoneToLoad}...`);
+
+  try {
+    let newTasks=[];
+    if (demoMode) {
+      const startId = allTasks.length + 100;
+      newTasks = makeDemoTasks(session.staff, [zoneToLoad], startId);
+    } else {
+      const data = await apiCall({action:'claimZone', staff:session.staff, zone:zoneToLoad});
+      newTasks = (data.tasks||[]).map(t=>({...t, isNew:true}));
+    }
+
+    // append new tasks to existing list
+    newTasks.forEach(t=>{ t.isNew=true; allTasks.push(t); });
+    hideLoading();
+    showToast(`Zone ${zoneToLoad} loaded — ${newTasks.length} SKUs added`,'success');
+    renderTaskScreen();
+    window.scrollTo({top:0,behavior:'smooth'});
+  } catch(e) {
+    hideLoading();
+    showToast('Failed to load next zone. Try again.','error');
+  }
+}
+
+function closeZoneModal() {
+  document.getElementById('zoneCompleteModal').classList.remove('show');
+  pendingNextZone=null;
+}
+
+// ── COUNT ENTRY ──────────────────────────────────────────────
+function openCount(rowId) {
+  currentTask = allTasks.find(t=>t.rowId===rowId);
+  if (!currentTask) return;
+  qtyStr='0';
+  document.getElementById('countLoc').textContent  = currentTask.locationCode;
+  document.getElementById('countSku').textContent  = currentTask.sku;
+  document.getElementById('countDesc').textContent = currentTask.description;
+  document.getElementById('countNotes').value      = '';
+  document.getElementById('submitBtn').disabled    = false;
+  updateQtyDisplay();
+  const rb=document.getElementById('recountBanner');
+  if(currentTask.taskType==='Recount'&&currentTask.submittedQty!==''){
+    rb.style.display='flex';
+    document.getElementById('prevCountDisplay').textContent=currentTask.submittedQty;
+  } else { rb.style.display='none'; }
+  showScreen('countScreen');
+}
+
+function numpadPress(key) {
+  if(key==='del') qtyStr=qtyStr.length>1?qtyStr.slice(0,-1):'0';
+  else if(key==='.') { if(!qtyStr.includes('.')) qtyStr+='.'; }
+  else { if(qtyStr==='0') qtyStr=key; else qtyStr+=key; if(qtyStr.length>6) qtyStr=qtyStr.slice(0,-1); }
+  updateQtyDisplay();
+}
+
+function updateQtyDisplay() {
+  const el=document.getElementById('qtyDisplay');
+  el.textContent=qtyStr;
+  el.classList.toggle('zero',qtyStr==='0');
+}
+
+async function submitCount() {
+  if(!currentTask) return;
+  const qty=parseFloat(qtyStr);
+  if(isNaN(qty)||qty<0){ showToast('Enter a valid quantity','error'); return; }
+  document.getElementById('submitBtn').disabled=true;
+  showLoading('Saving count...');
+  const payload={action:'submitCount',rowId:currentTask.rowId,sku:currentTask.sku,locationCode:currentTask.locationCode,submittedQty:qty,notes:document.getElementById('countNotes').value.trim(),staff:session.staff};
+  try {
+    if(!demoMode) await apiCall(payload);
+    const task=allTasks.find(t=>t.rowId===currentTask.rowId);
+    if(task){ task.submittedQty=qty; task.status='Complete'; task.notes=payload.notes; task.isNew=false; }
+    hideLoading();
+    showToast(`✓ ${currentTask.sku} saved — qty: ${qty}`,'success');
+    renderTaskScreen();
+    showScreen('taskScreen');
+  } catch(e) {
+    hideLoading();
+    document.getElementById('submitBtn').disabled=false;
+    showToast('Save failed. Try again.','error');
+  }
+}
+
+function backToTasks() { currentTask=null; showScreen('taskScreen'); }
+
+// ── SUPERVISOR ───────────────────────────────────────────────
+async function showSupervisor() {
+  showScreen('supervisorScreen');
+  await loadSupervisorData();
+}
+
+async function loadSupervisorData() {
+  showLoading('Loading all data...');
+  try {
+    let tasks, zoneQueue;
+    if(demoMode) {
+      tasks     = generateDemoAllTasks();
+      zoneQueue = ALL_ZONES.map((z,i)=>({zone:z, status:i<3?'Complete':i<6?'In Progress':'Available', assignedTo:i<6?DEMO_STAFF[i]:null, skuCount:4+Math.floor(Math.random()*6)}));
+    } else {
+      const data = await apiCall({action:'getSupervisorData'});
+      tasks     = data.tasks||[];
+      zoneQueue = data.zoneQueue||[];
+    }
+    hideLoading();
+    renderSupervisorData(tasks, zoneQueue);
+  } catch(e) { hideLoading(); showToast('Failed to load data','error'); }
+}
+
+function renderSupervisorData(tasks, zoneQueue) {
+  const total  = tasks.length;
+  const done   = tasks.filter(t=>t.status==='Complete').length;
+  const pending= total-done;
+  const pct    = total?Math.round(done/total*100):0;
+  document.getElementById('supTotal').textContent        = total;
+  document.getElementById('supDone').textContent         = done;
+  document.getElementById('supPending').textContent      = pending;
+  document.getElementById('supProgressFrac').textContent = `${done} / ${total}`;
+  const fill=document.getElementById('supProgressFill');
+  fill.style.width=pct+'%'; fill.className='progress-bar-fill'+(pct===100?' full':'');
+
+  const variances=tasks.filter(t=>t.status==='Complete'&&t.submittedQty!==''&&t.expectedQty!==''&&t.submittedQty!=t.expectedQty);
+  document.getElementById('supVariances').textContent=variances.length;
+
+  // counter progress with zone tags
+  const byStaff={};
+  tasks.forEach(t=>{
+    if(!byStaff[t.assignedTo]) byStaff[t.assignedTo]={total:0,done:0,zones:new Set()};
+    byStaff[t.assignedTo].total++;
+    byStaff[t.assignedTo].zones.add(t.zone);
+    if(t.status==='Complete') byStaff[t.assignedTo].done++;
+  });
+
+  let cpHtml='';
+  Object.keys(byStaff).sort().forEach(name=>{
+    const s=byStaff[name];
+    const p=s.total?Math.round(s.done/s.total*100):0;
+    const zoneTags=[...s.zones].sort().map(z=>`<span class="progress-zone-tag ${p===100?'done':''}">${z}</span>`).join('');
+    cpHtml+=`
+      <div class="progress-card">
+        <div class="progress-top"><span class="progress-name">${name}</span><span class="progress-frac">${s.done}/${s.total} &nbsp;<strong style="color:var(--accent)">${p}%</strong></span></div>
+        <div class="progress-zone-tags">${zoneTags}</div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill ${p===100?'full':''}" style="width:${p}%"></div></div>
+      </div>`;
+  });
+  document.getElementById('counterProgress').innerHTML=cpHtml||'<p style="color:var(--text2);font-size:14px;">No data yet.</p>';
+
+  // zone queue
+  let zqHtml='';
+  if(zoneQueue&&zoneQueue.length) {
+    zqHtml='<div class="zone-queue-card"><div class="zone-queue-title">All zones — allocation order</div>';
+    zoneQueue.forEach((z,i)=>{
+      const statusClass=z.status==='Complete'?'complete':z.status==='In Progress'?'in-progress':'available';
+      const statusIcon=z.status==='Complete'?'✓':z.status==='In Progress'?'●':'○';
+      zqHtml+=`
+        <div class="zone-row">
+          <span class="zone-code">${z.zone}</span>
+          <span class="zone-status ${statusClass}">${statusIcon} ${z.status}${z.assignedTo?' — '+z.assignedTo:''}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${z.skuCount} SKUs</span>
+        </div>`;
+    });
+    zqHtml+='</div>';
+  } else {
+    zqHtml='<p style="color:var(--text2);font-size:13px;">No zone data available.</p>';
+  }
+  document.getElementById('zoneQueueList').innerHTML=zqHtml;
+
+  // variances
+  let vHtml='';
+  if(!variances.length) {
+    vHtml='<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-title">No variances</div><div class="empty-sub">All counted items match expected quantities</div></div>';
+  } else {
+    variances.forEach(t=>{
+      const diff=parseFloat(t.submittedQty)-parseFloat(t.expectedQty);
+      const pos=diff>0;
+      vHtml+=`<div class="var-row ${pos?'positive':'negative'}"><div class="var-info"><div class="var-sku">${t.sku}</div><div class="var-loc">${t.locationCode} · ${t.assignedTo}</div><div class="var-loc">Expected: ${t.expectedQty} · Counted: ${t.submittedQty}</div></div><div class="var-num ${pos?'pos':'neg'}">${pos?'+':''}${diff}</div></div>`;
+    });
+  }
+  document.getElementById('varianceList').innerHTML=vHtml;
+}
+
+function supTab(id,el) {
+  document.querySelectorAll('.sup-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); document.getElementById('tab-'+id).classList.add('active');
+}
+
+// ── API ──────────────────────────────────────────────────────
+async function apiCall(payload) {
+  if(!config||!config.scriptUrl) throw new Error('No script URL');
+  const url=config.scriptUrl+'?data='+encodeURIComponent(JSON.stringify(payload));
+  const res=await fetch(url);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return await res.json();
+}
+
+// ── UTILS ────────────────────────────────────────────────────
+function showLoading(msg) { document.getElementById('loadingMsg').textContent=msg||'Loading...'; document.getElementById('loadingOverlay').classList.add('show'); }
+function hideLoading()    { document.getElementById('loadingOverlay').classList.remove('show'); }
+let toastTimer;
+function showToast(msg,type) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='toast show'+(type?' '+type:'');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
+}
+</script>
+</body>
+</html>
