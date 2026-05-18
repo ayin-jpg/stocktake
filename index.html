@@ -361,6 +361,10 @@
     <div class="loc-tag" id="countLoc">—</div>
     <div class="count-sku" id="countSku">—</div>
     <div class="count-desc" id="countDesc">—</div>
+    <div id="supplierSkuWrap" style="display:none;margin-top:6px;">
+      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;">Supplier SKU</span>
+      <span id="supplierSkuVal" style="font-family:var(--mono);font-size:13px;color:var(--text2);margin-left:8px;"></span>
+    </div>
 
   </div>
 
@@ -372,7 +376,7 @@
     <img id="productImg" class="product-image" src="" alt="Product image"
          style="display:none;"
          onload="document.getElementById('productImgLoading').style.display='none';this.style.display='block';"
-         onerror="document.getElementById('productImgLoading').style.display='none';document.getElementById('productImgError').style.display='flex';this.style.display='none';">
+         onerror="handleImgError(this)">
     <div id="productImgError" class="product-image-error" style="display:none;">Image not available</div>
   </div>
 
@@ -847,8 +851,9 @@ function renderTasks() {
             <div class="task-loc">${t.locationCode}</div>
             <div class="task-sku">${t.sku}</div>
             <div class="task-desc">${t.description}</div>
+            ${t.supplierSku ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:2px;">Supplier: ${t.supplierSku}</div>` : ''}
           </div>
-          ${t.imageUrl && !isDone ? `<div style="flex-shrink:0;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--surface2);margin-left:-4px;"><img src="${t.imageUrl}" style="width:100%;height:100%;object-fit:contain;" onerror="this.parentElement.style.display='none'"></div>` : ''}
+          ${t.imageUrl && !isDone ? `<div style="flex-shrink:0;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--surface2);margin-left:-4px;"><img src="${t.imageUrl}" style="width:100%;height:100%;object-fit:contain;" onerror="if(!this._p){this._p=true;this.src='https://corsproxy.io/?'+encodeURIComponent(this.src)}else{this.parentElement.style.display='none'}"></div>` : ''}
           <div class="task-meta">
             ${badge}
   
@@ -971,6 +976,15 @@ function openCount(rowId) {
   document.getElementById('countNotes').value      = '';
   document.getElementById('submitBtn').disabled    = false;
   updateQtyDisplay();
+  // Show supplier SKU if available
+  const supWrap = document.getElementById('supplierSkuWrap');
+  const supVal  = document.getElementById('supplierSkuVal');
+  if (currentTask.supplierSku) {
+    supVal.textContent = currentTask.supplierSku;
+    supWrap.style.display = 'block';
+  } else {
+    supWrap.style.display = 'none';
+  }
   // Auto-load product image
   const imgWrap    = document.getElementById('productImageWrap');
   const img        = document.getElementById('productImg');
@@ -978,9 +992,12 @@ function openCount(rowId) {
   const imgError   = document.getElementById('productImgError');
   if (currentTask.imageUrl) {
     imgWrap.classList.add('show');
-    img.style.display      = 'none';
-    imgError.style.display = 'none';
+    img.style.display        = 'none';
+    imgError.style.display   = 'none';
     imgLoading.style.display = 'flex';
+    // Try direct URL first, fall back to CORS proxy if blocked
+    img._directUrl = currentTask.imageUrl;
+    img._tried_proxy = false;
     img.src = currentTask.imageUrl;
   } else {
     imgWrap.classList.remove('show');
@@ -1005,6 +1022,17 @@ function updateQtyDisplay() {
   const el=document.getElementById('qtyDisplay');
   el.textContent=qtyStr;
   el.classList.toggle('zero',qtyStr==='0');
+}
+
+function handleImgError(img) {
+  if (!img._tried_proxy && img._directUrl) {
+    img._tried_proxy = true;
+    img.src = 'https://corsproxy.io/?' + encodeURIComponent(img._directUrl);
+  } else {
+    document.getElementById('productImgLoading').style.display = 'none';
+    document.getElementById('productImgError').style.display   = 'flex';
+    img.style.display = 'none';
+  }
 }
 
 async function submitCount() {
