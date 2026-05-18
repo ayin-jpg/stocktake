@@ -330,6 +330,13 @@
     </div>
     <button class="btn btn-ghost" style="width:auto;padding:7px 14px;font-size:13px;" onclick="logout()">Done</button>
   </div>
+  <!-- Counter round tabs -->
+  <div style="display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;">
+    <div class="sup-tab active" id="roundTab1" onclick="switchRound(1,this)" style="font-size:12px;padding:10px 14px;">Round 1</div>
+    <div class="sup-tab" id="roundTab2" onclick="switchRound(2,this)" style="font-size:12px;padding:10px 14px;">Recount</div>
+    <div class="sup-tab" id="roundTab3" onclick="switchRound(3,this)" style="font-size:12px;padding:10px 14px;">Final Count</div>
+  </div>
+
   <div class="screen-body">
     <div class="stats-row">
       <div class="stat-card"><div class="stat-num blue" id="statTotal">0</div><div class="stat-label">Total</div></div>
@@ -469,8 +476,34 @@
     </div>
 
     <div class="tab-content" id="tab-recount">
-      <div class="section-label">Recount queue</div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">Select a counter to assign each variance item to for recounting. The item will appear in their task list automatically.</div>
+      <div class="section-label">Recount rounds</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;">
+        Start a recount round to automatically distribute all variance items across staff, excluding the counter who did the previous round for each item.
+      </div>
+
+      <!-- Round 2 trigger -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Round 2 — Recount</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Distributes all items with a 1st variance across staff. Original counter excluded from their own items.</div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--text2);" id="round2Status">—</div>
+        </div>
+        <button class="btn btn-warning" style="font-size:13px;padding:10px;" onclick="startRecountRound(2)">
+          Start Round 2 Recount
+        </button>
+      </div>
+
+      <!-- Round 3 trigger -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Round 3 — Final Count</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Distributes all items still with variance after round 2. Both previous counters excluded.</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text2);margin-bottom:10px;" id="round3Status">—</div>
+        <button class="btn btn-danger" style="font-size:13px;padding:10px;" onclick="startRecountRound(3)">
+          Start Round 3 Final Count
+        </button>
+      </div>
+
+      <div class="section-label" style="margin-top:16px;">Variance summary</div>
       <div id="recountQueue"></div>
     </div>
 
@@ -519,6 +552,8 @@ let taskFilter   = 'all';
 let demoMode     = false;
 let pendingNextZone = null; // zone object queued up for acceptance
 let allStaffNames   = [];   // cached staff list for recount assignment
+let recountTasks    = [];   // recount tasks for current counter
+let currentRound    = 1;    // current counting round (1, 2, or 3)
 
 // ── DEMO DATA ───────────────────────────────────────────────
 const DEMO_STAFF = ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Henry','Isla','Jake','Karen','Leo','Mia','Noah','Olivia'];
@@ -991,6 +1026,7 @@ function openCount(rowId) {
   document.getElementById('countDesc').textContent = currentTask.description;
   document.getElementById('countNotes').value      = '';
   document.getElementById('submitBtn').disabled    = false;
+  currentTask.round = 1; // regular first count
   updateQtyDisplay();
   // Show supplier SKU if available
   const supWrap = document.getElementById('supplierSkuWrap');
@@ -1019,11 +1055,8 @@ function openCount(rowId) {
     imgWrap.classList.remove('show');
     img.src = '';
   }
-  const rb=document.getElementById('recountBanner');
-  if(currentTask.taskType==='Recount'&&currentTask.submittedQty!==''){
-    rb.style.display='flex';
-    document.getElementById('prevCountDisplay').textContent=currentTask.submittedQty;
-  } else { rb.style.display='none'; }
+  // Never show previous count — blind counting policy
+  document.getElementById('recountBanner').style.display='none';
   showScreen('countScreen');
 }
 
@@ -1057,21 +1090,32 @@ async function submitCount() {
   if(isNaN(qty)||qty<0){ showToast('Enter a valid quantity','error'); return; }
   document.getElementById('submitBtn').disabled=true;
   showLoading('Saving count...');
-  // Use submitRecount for recount tasks (writes to col M), submitCount for first counts (col J)
-  const isRecount = currentTask.taskType === 'Recount';
-  const payload={
-    action: isRecount ? 'submitRecount' : 'submitCount',
+  // Route to correct action based on round
+  const round = currentTask.round || 1;
+  const action = round === 1 ? 'submitCount' : 'submitRecount';
+  const payload = {
+    action, round,
     rowId:currentTask.rowId, sku:currentTask.sku,
     locationCode:currentTask.locationCode, submittedQty:qty,
     notes:document.getElementById('countNotes').value.trim(), staff:session.staff
   };
   try {
     if(!demoMode) await apiCall(payload);
-    const task=allTasks.find(t=>t.rowId===currentTask.rowId);
-    if(task){ task.submittedQty=qty; task.status='Complete'; task.notes=payload.notes; task.isNew=false; }
+    // Update local task list
+    const taskList = round === 1 ? allTasks : recountTasks;
+    const task = taskList.find(t=>t.rowId===currentTask.rowId);
+    if(task){
+      task.status='Complete';
+      task.notes=payload.notes;
+      task.isNew=false;
+      if(round===1) task.submittedQty=qty;
+      else if(round===2) task.recountQty=qty;
+      else if(round===3) task.finalCount=qty;
+    }
     hideLoading();
     showToast(`✓ ${currentTask.sku} saved — qty: ${qty}`,'success');
-    renderTaskScreen();
+    if(round===1){ renderTaskScreen(); }
+    else { renderRecountTaskList(round, recountTasks); }
     showScreen('taskScreen');
   } catch(e) {
     hideLoading();
@@ -1179,8 +1223,9 @@ function renderSupervisorData(tasks, zoneQueue) {
       vHtml+=`<div class="var-row ${pos?'positive':'negative'}">
         <div class="var-info">
           <div class="var-sku">${t.sku}</div>
-          <div class="var-loc">${t.locationCode} · ${t.assignedTo}</div>
+          <div class="var-loc">${t.locationCode} · ${t.originalCounter ? t.originalCounter : t.assignedTo}</div>
           <div class="var-loc">Expected: ${t.expectedQty} · Counted: ${total}</div>
+          ${t.recountQty !== '' ? `<div class="var-loc" style="color:var(--warning);">Recount: ${t.recountQty} by ${t.assignedTo}</div>` : ''}
         </div>
         <div class="var-row-actions">
           <div class="var-num ${pos?'pos':'neg'}">${pos?'+':''}${diff}</div>
@@ -1243,7 +1288,8 @@ function renderRecountQueue(variances, staffNames) {
           <div style="flex:1;min-width:0;">
             <div style="font-family:var(--mono);font-size:12px;color:var(--accent2);">${t.sku}</div>
             <div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.description}</div>
-            <div style="font-size:11px;color:var(--text2);">${t.locationCode} · Variance: <span style="color:${pos?'var(--success)':'var(--danger)'};">${pos?'+':''}${diff}</span></div>
+            <div style="font-size:11px;color:var(--text2);">${t.locationCode} · 1st count by: ${t.originalCounter || t.assignedTo}</div>
+            <div style="font-size:11px;color:var(--text2);">Variance: <span style="color:${pos?'var(--success)':'var(--danger)'};">${pos?'+':''}${diff}</span></div>
           </div>
           <div style="flex-shrink:0;">
             <select class="staff-select-mini" onchange="if(this.value) assignRecount(${t.rowId}, this.value, this)">
@@ -1256,6 +1302,167 @@ function renderRecountQueue(variances, staffNames) {
     html += '</div>';
   }
   document.getElementById('recountQueue').innerHTML = html;
+}
+
+// ── ROUND SWITCHING (counter side) ───────────────────────────
+async function switchRound(round, el) {
+  currentRound = round;
+  document.querySelectorAll('#roundTab1,#roundTab2,#roundTab3').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+
+  if (round === 1) {
+    // Show regular task list
+    renderTaskScreen();
+  } else {
+    // Load recount tasks for this round
+    showLoading(`Loading Round ${round} tasks...`);
+    try {
+      let tasks = [];
+      if (demoMode) {
+        tasks = [];
+      } else {
+        const data = await apiCall({ action:'getRecountTasks', staff:session.staff, round });
+        tasks = data.tasks || [];
+      }
+      recountTasks = tasks;
+      hideLoading();
+      renderRecountTaskList(round, tasks);
+    } catch(e) {
+      hideLoading();
+      showToast('Failed to load recount tasks','error');
+    }
+  }
+}
+
+function renderRecountTaskList(round, tasks) {
+  const roundLabel = round === 2 ? 'Recount (Round 2)' : 'Final Count (Round 3)';
+  const pending = tasks.filter(t => t.status === 'Pending');
+  const done    = tasks.filter(t => t.status === 'Complete');
+
+  document.getElementById('statTotal').textContent   = tasks.length;
+  document.getElementById('statPending').textContent = pending.length;
+  document.getElementById('statDone').textContent    = done.length;
+  document.getElementById('taskProgress').textContent =
+    pending.length > 0 ? `${pending.length} ${roundLabel} tasks remaining` : `✓ Round ${round} complete!`;
+  document.getElementById('zoneCompleteCard').style.display = 'none';
+
+  const container = document.getElementById('taskList');
+  if (!tasks.length) {
+    container.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">${round===2?'↩':'🏁'}</div>
+      <div class="empty-title">No Round ${round} tasks assigned</div>
+      <div class="empty-sub">Supervisor hasn't started Round ${round} yet, or you have no variance items to recount</div>
+    </div>`;
+    return;
+  }
+
+  // Group by zone
+  const groups = {};
+  tasks.forEach(t => {
+    if (!groups[t.zone]) groups[t.zone] = [];
+    groups[t.zone].push(t);
+  });
+
+  let html = '';
+  let lastZone = '';
+  Object.keys(groups).sort().forEach(zone => {
+    html += `<div class="section-label" style="margin-top:${lastZone?'16px':'0'};">
+      Zone ${zone} — ${roundLabel}
+    </div>`;
+    lastZone = zone;
+    groups[zone].forEach(t => {
+      const isDone   = t.status === 'Complete';
+
+
+      html += `
+        <div class="task-card ${isDone?'done':'recount'}" onclick="${isDone?'':` openRecountCount(${t.rowId},${round})`}">
+          <div class="task-icon ${isDone?'done':'recount'}">${isDone?'✓':'↩'}</div>
+          <div class="task-info">
+            <div class="task-loc">${t.locationCode}</div>
+            <div class="task-sku">${t.sku}</div>
+            <div class="task-desc">${t.description}</div>
+            <div style="font-size:11px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;">
+              <span style="color:var(--text3);">Zone ${t.zone} · ${round===2?'Round 2':'Round 3'} recount</span>
+            </div>
+          </div>
+          <div class="task-meta">
+            <span class="badge ${isDone?'badge-done':'badge-recount'}">${isDone?'Done':'↩'}</span>
+            ${isDone?`<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${round===2?t.recountQty:t.finalCount}</div>`:'<div class="chevron">›</div>'}
+          </div>
+        </div>`;
+    });
+  });
+  container.innerHTML = html;
+}
+
+function openRecountCount(rowId, round) {
+  const tasks = round === 1 ? allTasks : recountTasks;
+  currentTask = tasks.find(t => t.rowId === rowId);
+  if (!currentTask) return;
+  currentTask.round = round;
+  qtyStr = '0';
+  document.getElementById('countLoc').textContent  = currentTask.locationCode;
+  document.getElementById('countSku').textContent  = currentTask.sku;
+  document.getElementById('countDesc').textContent = currentTask.description;
+  document.getElementById('countNotes').value      = '';
+  document.getElementById('submitBtn').disabled    = false;
+  updateQtyDisplay();
+
+  // Recount banner hidden — previous count not shown to avoid skewing the count
+  document.getElementById('recountBanner').style.display = 'none';
+
+  // Image
+  const imgWrap = document.getElementById('productImageWrap');
+  const img     = document.getElementById('productImg');
+  const imgLoading = document.getElementById('productImgLoading');
+  const imgError   = document.getElementById('productImgError');
+  if (currentTask.imageUrl) {
+    imgWrap.classList.add('show');
+    img.style.display = 'none';
+    imgError.style.display = 'none';
+    imgLoading.style.display = 'flex';
+    img._directUrl = currentTask.imageUrl;
+    img._tried_proxy = false;
+    img.src = currentTask.imageUrl;
+  } else {
+    imgWrap.classList.remove('show');
+    img.src = '';
+  }
+
+  showScreen('countScreen');
+}
+
+// ── START RECOUNT ROUND (supervisor) ─────────────────────────
+async function startRecountRound(round) {
+  const label = round === 2 ? 'Round 2 Recount' : 'Round 3 Final Count';
+  if (!confirm(`Start ${label}? This will distribute all variance zones across staff automatically, excluding counters who have already counted each zone.`)) return;
+
+  showLoading(`Starting ${label}...`);
+  try {
+    const data = await apiCall({ action:'startRecountRound', round });
+    hideLoading();
+    if (data.success) {
+      showToast(`${label} started — ${data.assignedZones} zones, ${data.assignedItems} SKUs assigned`, 'success');
+
+      // Build zone assignment summary
+      const statusEl = document.getElementById(round===2?'round2Status':'round3Status');
+      let summary = `${data.assignedZones} zones distributed (${data.assignedItems} SKUs total)`;
+      if (data.zoneMap && Object.keys(data.zoneMap).length) {
+        const entries = Object.entries(data.zoneMap)
+          .map(([zone, staff]) => `<span style="font-family:var(--mono);color:var(--accent2);">${zone}</span> → ${staff}`)
+          .join(' &nbsp;·&nbsp; ');
+        summary += `<div style="margin-top:6px;font-size:11px;line-height:1.8;">${entries}</div>`;
+      }
+      statusEl.innerHTML = summary;
+
+      loadSupervisorData();
+    } else {
+      showToast(data.error || `Could not start ${label}`, 'error');
+    }
+  } catch(e) {
+    hideLoading();
+    showToast(`Failed to start ${label}`, 'error');
+  }
 }
 
 function supTab(id,el) {
