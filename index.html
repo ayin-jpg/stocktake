@@ -461,7 +461,17 @@
 const CONFIG_KEY  = 'stocktake_config';
 const SESSION_KEY = 'stocktake_session';
 
-let config  = JSON.parse(localStorage.getItem(CONFIG_KEY)  || 'null');
+const DEFAULT_CONFIG = {
+  scriptUrl:      'https://script.google.com/macros/s/AKfycbymnhBIB3Y2WRDV1pszeEKOPDGfvACf02_eenT_X_Pmn-xk0IAoW71xvf90bpAKS2w/exec',
+  supervisorName: 'Supervisor',
+  pin:            '5555'
+};
+
+let config = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null');
+if (!config || !config.scriptUrl) {
+  config = DEFAULT_CONFIG;
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+}
 let session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
 let allTasks     = [];   // tasks for current counter
 let currentTask  = null;
