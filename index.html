@@ -201,6 +201,14 @@
   .product-image{width:100%;max-height:200px;object-fit:contain;border-radius:var(--radius);background:var(--surface);border:1px solid var(--border);}
   .product-image-error{width:100%;height:80px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);}
   .product-img-loading{width:100%;height:120px;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);}
+
+  .recount-queue-card{background:var(--surface);border:1px solid rgba(251,191,36,.3);border-radius:var(--radius);padding:16px;margin-bottom:12px;}
+  .recount-queue-title{font-size:14px;font-weight:500;color:var(--warning);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+  .var-row-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+  .recount-btn{background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.3);color:var(--warning);font-size:11px;font-family:var(--sans);padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;}
+  .recount-btn:hover{background:rgba(251,191,36,.25);}
+  .recount-sent{font-size:11px;color:var(--success);padding:5px 10px;}
+  .staff-select-mini{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12px;padding:4px 8px;outline:none;max-width:120px;}
 </style>
 </head>
 <body>
@@ -421,6 +429,7 @@
     <div class="sup-tab" onclick="supTab('counters',this)">Counters</div>
     <div class="sup-tab" onclick="supTab('zones',this)">Zone queue</div>
     <div class="sup-tab" onclick="supTab('variances',this)">Variances</div>
+    <div class="sup-tab" onclick="supTab('recount',this)">Recount</div>
     <div class="sup-tab" onclick="supTab('settings',this)">Settings</div>
   </div>
   <div style="flex:1;overflow-y:auto;">
@@ -457,6 +466,12 @@
     <div class="tab-content" id="tab-variances">
       <div class="section-label">Items with variance</div>
       <div id="varianceList"></div>
+    </div>
+
+    <div class="tab-content" id="tab-recount">
+      <div class="section-label">Recount queue</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">Select a counter to assign each variance item to for recounting. The item will appear in their task list automatically.</div>
+      <div id="recountQueue"></div>
     </div>
 
     <div class="tab-content" id="tab-settings">
@@ -503,6 +518,7 @@ let qtyStr       = '0';
 let taskFilter   = 'all';
 let demoMode     = false;
 let pendingNextZone = null; // zone object queued up for acceptance
+let allStaffNames   = [];   // cached staff list for recount assignment
 
 // ── DEMO DATA ───────────────────────────────────────────────
 const DEMO_STAFF = ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Henry','Isla','Jake','Karen','Leo','Mia','Noah','Olivia'];
@@ -1041,7 +1057,14 @@ async function submitCount() {
   if(isNaN(qty)||qty<0){ showToast('Enter a valid quantity','error'); return; }
   document.getElementById('submitBtn').disabled=true;
   showLoading('Saving count...');
-  const payload={action:'submitCount',rowId:currentTask.rowId,sku:currentTask.sku,locationCode:currentTask.locationCode,submittedQty:qty,notes:document.getElementById('countNotes').value.trim(),staff:session.staff};
+  // Use submitRecount for recount tasks (writes to col M), submitCount for first counts (col J)
+  const isRecount = currentTask.taskType === 'Recount';
+  const payload={
+    action: isRecount ? 'submitRecount' : 'submitCount',
+    rowId:currentTask.rowId, sku:currentTask.sku,
+    locationCode:currentTask.locationCode, submittedQty:qty,
+    notes:document.getElementById('countNotes').value.trim(), staff:session.staff
+  };
   try {
     if(!demoMode) await apiCall(payload);
     const task=allTasks.find(t=>t.rowId===currentTask.rowId);
@@ -1078,6 +1101,10 @@ async function loadSupervisorData() {
       zoneQueue = data.zoneQueue||[];
     }
     hideLoading();
+    // Store staff list for recount assignment dropdowns
+    if (!demoMode) {
+      apiCall({action:'getStaff'}).then(d => { allStaffNames = d.staff||[]; });
+    }
     renderSupervisorData(tasks, zoneQueue);
   } catch(e) { hideLoading(); showToast('Failed to load data','error'); }
 }
@@ -1146,12 +1173,89 @@ function renderSupervisorData(tasks, zoneQueue) {
     vHtml='<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-title">No variances</div><div class="empty-sub">All counted items match expected quantities</div></div>';
   } else {
     variances.forEach(t=>{
-      const diff=parseFloat(t.submittedQty)-parseFloat(t.expectedQty);
-      const pos=diff>0;
-      vHtml+=`<div class="var-row ${pos?'positive':'negative'}"><div class="var-info"><div class="var-sku">${t.sku}</div><div class="var-loc">${t.locationCode} · ${t.assignedTo}</div><div class="var-loc">Expected: ${t.expectedQty} · Counted: ${t.submittedQty}</div></div><div class="var-num ${pos?'pos':'neg'}">${pos?'+':''}${diff}</div></div>`;
+      const total = t.totalCounted !== '' ? parseFloat(t.totalCounted) : parseFloat(t.submittedQty);
+      const diff  = total - parseFloat(t.expectedQty);
+      const pos   = diff > 0;
+      vHtml+=`<div class="var-row ${pos?'positive':'negative'}">
+        <div class="var-info">
+          <div class="var-sku">${t.sku}</div>
+          <div class="var-loc">${t.locationCode} · ${t.assignedTo}</div>
+          <div class="var-loc">Expected: ${t.expectedQty} · Counted: ${total}</div>
+        </div>
+        <div class="var-row-actions">
+          <div class="var-num ${pos?'pos':'neg'}">${pos?'+':''}${diff}</div>
+          <button class="recount-btn" onclick="showRecountAssign(${t.rowId}, this)">↩ Recount</button>
+        </div>
+      </div>`;
     });
   }
   document.getElementById('varianceList').innerHTML=vHtml;
+
+  // Build recount queue tab
+  renderRecountQueue(variances, allStaffNames);
+}
+
+function showRecountAssign(rowId, btn) {
+  // Toggle staff picker below the recount button
+  const existing = btn.parentElement.querySelector('.staff-select-mini');
+  if (existing) { existing.remove(); return; }
+  const sel = document.createElement('select');
+  sel.className = 'staff-select-mini';
+  sel.innerHTML = '<option value="">Assign to...</option>';
+  const names = allStaffNames.length ? allStaffNames : DEMO_STAFF;
+  names.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n; sel.appendChild(o);
+  });
+  sel.onchange = () => {
+    if (!sel.value) return;
+    assignRecount(rowId, sel.value, btn);
+  };
+  btn.parentElement.appendChild(sel);
+}
+
+async function assignRecount(rowId, staffName, btn) {
+  try {
+    if (!demoMode) {
+      await apiCall({ action:'sendForRecount', rowId, staff:staffName });
+    }
+    btn.parentElement.innerHTML = `<span class="recount-sent">↩ Sent to ${staffName}</span>`;
+    showToast(`Recount assigned to ${staffName}`,'success');
+  } catch(e) {
+    showToast('Failed to assign recount','error');
+  }
+}
+
+function renderRecountQueue(variances, staffNames) {
+  const names = (staffNames && staffNames.length) ? staffNames : DEMO_STAFF;
+  let html = '';
+  if (!variances || !variances.length) {
+    html = '<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-title">No recounts needed</div><div class="empty-sub">No variances to recount yet</div></div>';
+  } else {
+    html += '<div class="recount-queue-card">';
+    html += '<div class="recount-queue-title">⚠ ' + variances.length + ' item' + (variances.length!==1?'s':'') + ' need recounting</div>';
+    variances.forEach(t => {
+      const total = t.totalCounted !== '' ? parseFloat(t.totalCounted) : parseFloat(t.submittedQty||0);
+      const diff  = total - parseFloat(t.expectedQty||0);
+      const pos   = diff > 0;
+      html += `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:var(--mono);font-size:12px;color:var(--accent2);">${t.sku}</div>
+            <div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.description}</div>
+            <div style="font-size:11px;color:var(--text2);">${t.locationCode} · Variance: <span style="color:${pos?'var(--success)':'var(--danger)'};">${pos?'+':''}${diff}</span></div>
+          </div>
+          <div style="flex-shrink:0;">
+            <select class="staff-select-mini" onchange="if(this.value) assignRecount(${t.rowId}, this.value, this)">
+              <option value="">Assign to...</option>
+              ${names.map(n=>`<option value="${n}">${n}</option>`).join('')}
+            </select>
+          </div>
+        </div>`;
+    });
+    html += '</div>';
+  }
+  document.getElementById('recountQueue').innerHTML = html;
 }
 
 function supTab(id,el) {
