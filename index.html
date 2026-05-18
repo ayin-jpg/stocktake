@@ -355,6 +355,12 @@
     <div class="loc-tag" id="countLoc">—</div>
     <div class="count-sku" id="countSku">—</div>
     <div class="count-desc" id="countDesc">—</div>
+    <div id="productUrlWrap" style="display:none;margin-top:10px;">
+      <a id="productUrlBtn" href="#" target="_blank"
+         style="display:inline-flex;align-items:center;gap:6px;background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.25);color:var(--accent2);font-size:13px;padding:7px 14px;border-radius:20px;text-decoration:none;">
+        🔗 View product page
+      </a>
+    </div>
   </div>
   <div id="recountBanner" class="recount-banner" style="display:none;">
     ⚠ Recount — previous count was <strong id="prevCountDisplay">—</strong>. Enter new quantity.
@@ -830,6 +836,7 @@ function renderTasks() {
           </div>
           <div class="task-meta">
             ${badge}
+            ${t.productUrl ? `<div style="margin-top:5px;"><a href="${t.productUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--accent2);text-decoration:none;background:rgba(79,142,247,.12);padding:2px 7px;border-radius:10px;">🔗 View</a></div>` : ''}
             ${isDone?`<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${t.submittedQty}</div>`:'<div class="chevron">›</div>'}
           </div>
         </div>`;
@@ -949,6 +956,15 @@ function openCount(rowId) {
   document.getElementById('countNotes').value      = '';
   document.getElementById('submitBtn').disabled    = false;
   updateQtyDisplay();
+  // Show or hide product URL button
+  const urlWrap = document.getElementById('productUrlWrap');
+  const urlBtn  = document.getElementById('productUrlBtn');
+  if (currentTask.productUrl) {
+    urlBtn.href = currentTask.productUrl;
+    urlWrap.style.display = 'block';
+  } else {
+    urlWrap.style.display = 'none';
+  }
   const rb=document.getElementById('recountBanner');
   if(currentTask.taskType==='Recount'&&currentTask.submittedQty!==''){
     rb.style.display='flex';
