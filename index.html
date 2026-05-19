@@ -1024,6 +1024,8 @@ async function acceptNextZone() {
         zone:   zoneToLoad,
         round:  round
       });
+      console.log('claimZone response:', JSON.stringify(data).substring(0, 200));
+      console.log('tasks count:', (data.tasks||[]).length, 'round:', round, 'isRecount:', isRecount);
       newTasks = (data.tasks||[]).map(t=>({...t, isNew:true}));
     }
 
