@@ -1025,12 +1025,19 @@ async function acceptNextZone() {
       newTasks = (data.tasks||[]).map(t=>({...t, isNew:true}));
     }
 
+    // Tag and push all tasks to allTasks BEFORE switching tabs
     newTasks.forEach(t => {
       t.isNew    = true;
       t.round    = round;
       t.taskType = round === 2 ? 'Recount 2' : round === 3 ? 'Recount 3' : t.taskType;
       allTasks.push(t);
     });
+
+    // Also set recountTasks directly so switchRound finds them immediately
+    if (isRecount) {
+      recountTasks = newTasks;
+    }
+
     hideLoading();
 
     const label = isRecount
@@ -1038,10 +1045,15 @@ async function acceptNextZone() {
       : `Zone ${zoneToLoad} loaded — ${newTasks.length} SKUs added`;
     showToast(label, 'success');
 
-    // Switch to the correct round tab automatically
+    // Switch to the correct round tab — recountTasks already set so no fetch needed
     if (isRecount) {
       const tabEl = document.getElementById(round===2?'roundTab2':'roundTab3');
-      if (tabEl) switchRound(round, tabEl);
+      if (tabEl) {
+        currentRound = round;
+        document.querySelectorAll('#roundTab1,#roundTab2,#roundTab3').forEach(t=>t.classList.remove('active'));
+        tabEl.classList.add('active');
+        renderRecountTaskList(round, recountTasks);
+      }
     } else {
       renderTaskScreen();
     }
