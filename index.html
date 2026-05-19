@@ -391,7 +391,7 @@
     <img id="productImg" class="product-image" src="" alt="Product image"
          style="display:none;"
          onload="document.getElementById('productImgLoading').style.display='none';this.style.display='block';"
-         onerror="handleImgError(this)">
+         onerror="if(!this._tried_proxy&&this._directUrl){this._tried_proxy=true;this.src='https://corsproxy.io/?'+encodeURIComponent(this._directUrl);}else{document.getElementById('productImgLoading').style.display='none';document.getElementById('productImgError').style.display='flex';this.style.display='none';}">
     <div id="productImgError" class="product-image-error" style="display:none;">Image not available</div>
   </div>
 
@@ -1035,7 +1035,12 @@ async function acceptNextZone() {
       newTasks = (data.tasks||[]).map(t=>({...t, isNew:true}));
     }
 
-    newTasks.forEach(t => { t.isNew = true; allTasks.push(t); });
+    newTasks.forEach(t => {
+      t.isNew    = true;
+      t.round    = round;
+      t.taskType = round === 2 ? 'Recount 2' : round === 3 ? 'Recount 3' : t.taskType;
+      allTasks.push(t);
+    });
     hideLoading();
 
     const label = isRecount
@@ -1357,26 +1362,41 @@ async function switchRound(round, el) {
   el.classList.add('active');
 
   if (round === 1) {
-    // Show regular task list
     renderTaskScreen();
-  } else {
-    // Load recount tasks for this round
-    showLoading(`Loading Round ${round} tasks...`);
-    try {
-      let tasks = [];
-      if (demoMode) {
-        tasks = [];
-      } else {
-        const data = await apiCall({ action:'getRecountTasks', staff:session.staff, round });
-        tasks = data.tasks || [];
-      }
-      recountTasks = tasks;
-      hideLoading();
-      renderRecountTaskList(round, tasks);
-    } catch(e) {
-      hideLoading();
-      showToast('Failed to load recount tasks','error');
+    return;
+  }
+
+  // Check allTasks first — recount tasks claimed via next zone flow are already there
+  const roundType  = round === 2 ? 'Recount 2' : 'Recount 3';
+  const localTasks = allTasks.filter(t => t.taskType === roundType || t.round === round);
+
+  if (localTasks.length > 0) {
+    // Tasks already loaded via next zone — use them directly
+    recountTasks = localTasks;
+    renderRecountTaskList(round, recountTasks);
+    return;
+  }
+
+  // No local tasks — fetch from server (handles case where counter logs back in mid-recount)
+  showLoading(`Loading Round ${round} tasks...`);
+  try {
+    let tasks = [];
+    if (!demoMode) {
+      const data = await apiCall({ action:'getRecountTasks', staff:session.staff, round });
+      tasks = data.tasks || [];
+      // Merge fetched tasks into allTasks so they persist across tab switches
+      tasks.forEach(t => {
+        if (!allTasks.find(a => a.rowId === t.rowId)) {
+          allTasks.push(t);
+        }
+      });
     }
+    recountTasks = tasks;
+    hideLoading();
+    renderRecountTaskList(round, recountTasks);
+  } catch(e) {
+    hideLoading();
+    showToast('Failed to load recount tasks','error');
   }
 }
 
