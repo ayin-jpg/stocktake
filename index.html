@@ -476,31 +476,21 @@
     </div>
 
     <div class="tab-content" id="tab-recount">
-      <div class="section-label">Recount rounds</div>
+      <div class="section-label">Recount status</div>
       <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;">
-        Start a recount round to automatically distribute all variance items across staff, excluding the counter who did the previous round for each item.
+        Recount zones are automatically assigned to staff when they finish their current zone and tap "I'm done". Staff are never assigned a zone they previously counted.
       </div>
 
-      <!-- Round 2 trigger -->
+      <!-- Round 2 status -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Round 2 — Recount</div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Distributes all items with a 1st variance across staff. Original counter excluded from their own items.</div>
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
-          <div style="font-family:var(--mono);font-size:12px;color:var(--text2);" id="round2Status">—</div>
-        </div>
-        <button class="btn btn-warning" style="font-size:13px;padding:10px;" onclick="startRecountRound(2)">
-          Start Round 2 Recount
-        </button>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text2);margin-top:6px;" id="round2Status">Loading...</div>
       </div>
 
-      <!-- Round 3 trigger -->
+      <!-- Round 3 status -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Round 3 — Final Count</div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Distributes all items still with variance after round 2. Both previous counters excluded.</div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--text2);margin-bottom:10px;" id="round3Status">—</div>
-        <button class="btn btn-danger" style="font-size:13px;padding:10px;" onclick="startRecountRound(3)">
-          Start Round 3 Final Count
-        </button>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text2);margin-top:6px;" id="round3Status">Loading...</div>
       </div>
 
       <div class="section-label" style="margin-top:16px;">Variance summary</div>
@@ -1218,6 +1208,31 @@ function renderSupervisorData(tasks, zoneQueue) {
 
   const variances=tasks.filter(t=>t.status==='Complete'&&t.submittedQty!==''&&t.expectedQty!==''&&t.submittedQty!=t.expectedQty);
   document.getElementById('supVariances').textContent=variances.length;
+
+  // Round 2 status
+  const r2Total   = tasks.filter(t => t.variance1 !== '' && t.variance1 !== 0).length;
+  const r2Done    = tasks.filter(t => t.recountQty !== '').length;
+  const r2Pending = tasks.filter(t => t.variance1 !== '' && t.variance1 !== 0 && t.recountQty === '' && t.recount2Counter !== '').length;
+  const r2El = document.getElementById('round2Status');
+  if (r2El) {
+    if (r2Total === 0) {
+      r2El.textContent = 'No variances yet — waiting for first counts to complete';
+    } else {
+      r2El.innerHTML = `${r2Done} of ${r2Total} SKUs recounted &nbsp;·&nbsp; ${r2Pending} in progress &nbsp;·&nbsp; ${r2Total-r2Done-r2Pending} unassigned`;
+    }
+  }
+
+  // Round 3 status
+  const r3Total = tasks.filter(t => t.variance2 !== '' && t.variance2 !== 0).length;
+  const r3Done  = tasks.filter(t => t.finalCount !== '').length;
+  const r3El    = document.getElementById('round3Status');
+  if (r3El) {
+    if (r3Total === 0) {
+      r3El.textContent = 'No Round 2 variances yet';
+    } else {
+      r3El.innerHTML = `${r3Done} of ${r3Total} SKUs final counted &nbsp;·&nbsp; ${r3Total-r3Done} remaining`;
+    }
+  }
 
   // counter progress with zone tags
   const byStaff={};
