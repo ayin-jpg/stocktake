@@ -939,6 +939,7 @@ async function checkForNextZone() {
       }
     } else {
       const data = await apiCall({action:'getNextZone', staff:session.staff});
+      console.log('getNextZone response:', JSON.stringify(data));
       nextZone = data.nextZone||null;
     }
 
