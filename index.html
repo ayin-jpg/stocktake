@@ -946,6 +946,7 @@ async function checkForNextZone() {
 
     // show modal regardless — either with next zone or all-done message
     pendingNextZone = nextZone;
+    console.log('pendingNextZone:', JSON.stringify(pendingNextZone));
     showZoneCompleteModal(nextZone);
 
   } catch(e) {
