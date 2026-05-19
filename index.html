@@ -785,20 +785,37 @@ function loadCounterSession() {
 }
 
 // Auto-claims the next available zone for a counter who has no tasks
+// Works for both regular zones and recount zones
 async function autoClaimFirstZone(staffName) {
   try {
     showLoading('Finding your zone...');
     const nextData = await apiCall({action:'getNextZone', staff:staffName});
-    const nextZone = nextData.nextZone||null;
+    const nextZone = nextData.nextZone || null;
     if (!nextZone) {
       showToast('No zones available — speak to your supervisor','error');
       return [];
     }
-    showLoading(`Assigning zone ${nextZone.zone} to you...`);
-    const claimData = await apiCall({action:'claimZone', staff:staffName, zone:nextZone.zone});
-    const newTasks  = claimData.tasks||[];
+    const isRecount  = nextZone.isRecount || false;
+    const round      = nextZone.round || 1;
+    const roundLabel = round === 3 ? 'Final Count' : round === 2 ? 'Recount' : 'Zone';
+    showLoading(`Assigning ${isRecount ? roundLabel : 'zone'} ${nextZone.zone} to you...`);
+    const claimData = await apiCall({
+      action: 'claimZone',
+      staff:  staffName,
+      zone:   nextZone.zone,
+      round:  round
+    });
+    const newTasks = claimData.tasks || [];
     if (newTasks.length > 0) {
-      showToast(`Zone ${nextZone.zone} assigned — ${newTasks.length} SKUs to count`,'success');
+      const msg = isRecount
+        ? `${roundLabel} zone ${nextZone.zone} assigned — ${newTasks.length} SKUs`
+        : `Zone ${nextZone.zone} assigned — ${newTasks.length} SKUs to count`;
+      showToast(msg, 'success');
+      // If it's a recount zone, switch to the correct tab
+      if (isRecount) {
+        const tabEl = document.getElementById(round===2?'roundTab2':'roundTab3');
+        if (tabEl) setTimeout(() => switchRound(round, tabEl), 500);
+      }
     } else {
       showToast('No tasks found — speak to your supervisor','error');
     }
@@ -948,35 +965,46 @@ async function checkForNextZone() {
 }
 
 function showZoneCompleteModal(nextZone) {
-  const preview   = document.getElementById('nextZonePreview');
-  const acceptBtn = document.getElementById('acceptNextZoneBtn');
-  const noMoreBtn = document.getElementById('noMoreZonesBtn');
-  const declineBtn= document.getElementById('declineNextZoneBtn');
+  const preview    = document.getElementById('nextZonePreview');
+  const acceptBtn  = document.getElementById('acceptNextZoneBtn');
+  const noMoreBtn  = document.getElementById('noMoreZonesBtn');
+  const declineBtn = document.getElementById('declineNextZoneBtn');
 
   const countedZones = [...new Set(allTasks.map(t=>t.zone))].join(', ');
   document.getElementById('zoneCompleteMsg').textContent =
     `You've finished all SKUs in zone${countedZones.includes(',')?'s':''} ${countedZones}.`;
 
   if (nextZone) {
-    preview.innerHTML=`
+    const isRecount = nextZone.isRecount || false;
+    const roundLabel = nextZone.round === 3 ? 'Final Count (Round 3)' : 'Recount (Round 2)';
+
+    preview.innerHTML = `
       <div class="next-zone-preview">
-        <div class="next-zone-label">Next zone available</div>
-        <div class="next-zone-name">${nextZone.zone}</div>
-        <div class="next-zone-count">${nextZone.skuCount} SKUs to count</div>
+        <div class="next-zone-label">${isRecount ? roundLabel + ' available' : 'Next zone available'}</div>
+        <div class="next-zone-name">
+          ${isRecount ? '<span style="font-size:14px;color:var(--warning);margin-right:6px;">↩</span>' : ''}
+          ${nextZone.zone}
+        </div>
+        <div class="next-zone-count">
+          ${nextZone.skuCount} ${isRecount ? 'variance SKUs to recount' : 'SKUs to count'}
+        </div>
+        ${isRecount ? `<div style="font-size:11px;color:var(--text3);margin-top:6px;">Only items with variance will appear — blind count applies</div>` : ''}
       </div>`;
-    acceptBtn.style.display='flex';
-    noMoreBtn.style.display='none';
-    declineBtn.textContent='Take a break first';
+    acceptBtn.textContent = isRecount ? `↩ Start ${roundLabel}` : 'Load next zone';
+    acceptBtn.style.display = 'flex';
+    noMoreBtn.style.display  = 'none';
+    declineBtn.style.display = 'flex';
+    declineBtn.textContent   = 'Take a break first';
   } else {
-    preview.innerHTML=`
+    preview.innerHTML = `
       <div class="next-zone-preview" style="text-align:center;">
         <div style="font-size:32px;margin-bottom:8px;">🏆</div>
-        <div style="font-size:15px;font-weight:500;color:var(--success);margin-bottom:4px;">All zones complete!</div>
-        <div style="font-size:13px;color:var(--text2);">Every zone has been counted or is already assigned to someone.</div>
+        <div style="font-size:15px;font-weight:500;color:var(--success);margin-bottom:4px;">All done!</div>
+        <div style="font-size:13px;color:var(--text2);">All zones counted and all recounts complete.</div>
       </div>`;
-    acceptBtn.style.display='none';
-    noMoreBtn.style.display='flex';
-    declineBtn.style.display='none';
+    acceptBtn.style.display  = 'none';
+    noMoreBtn.style.display  = 'flex';
+    declineBtn.style.display = 'none';
   }
 
   document.getElementById('zoneCompleteModal').classList.add('show');
@@ -984,27 +1012,45 @@ function showZoneCompleteModal(nextZone) {
 
 async function acceptNextZone() {
   if (!pendingNextZone) return;
-  // Save zone before closing modal — closeZoneModal sets pendingNextZone to null
   const zoneToLoad = pendingNextZone.zone;
+  const isRecount  = pendingNextZone.isRecount || false;
+  const round      = pendingNextZone.round || 1;
+  const roundLabel = round === 3 ? 'Final Count' : round === 2 ? 'Recount' : 'Zone';
   closeZoneModal();
-  showLoading(`Loading zone ${zoneToLoad}...`);
+  showLoading(`Loading ${isRecount ? roundLabel : 'zone'} ${zoneToLoad}...`);
 
   try {
-    let newTasks=[];
+    let newTasks = [];
     if (demoMode) {
       const startId = allTasks.length + 100;
       newTasks = makeDemoTasks(session.staff, [zoneToLoad], startId);
+      if (isRecount) newTasks.forEach(t => { t.taskType = round===2?'Recount 2':'Recount 3'; t.round=round; });
     } else {
-      const data = await apiCall({action:'claimZone', staff:session.staff, zone:zoneToLoad});
+      const data = await apiCall({
+        action: 'claimZone',
+        staff:  session.staff,
+        zone:   zoneToLoad,
+        round:  round
+      });
       newTasks = (data.tasks||[]).map(t=>({...t, isNew:true}));
     }
 
-    // append new tasks to existing list
-    newTasks.forEach(t=>{ t.isNew=true; allTasks.push(t); });
+    newTasks.forEach(t => { t.isNew = true; allTasks.push(t); });
     hideLoading();
-    showToast(`Zone ${zoneToLoad} loaded — ${newTasks.length} SKUs added`,'success');
-    renderTaskScreen();
-    window.scrollTo({top:0,behavior:'smooth'});
+
+    const label = isRecount
+      ? `${roundLabel} zone ${zoneToLoad} — ${newTasks.length} SKUs`
+      : `Zone ${zoneToLoad} loaded — ${newTasks.length} SKUs added`;
+    showToast(label, 'success');
+
+    // Switch to the correct round tab automatically
+    if (isRecount) {
+      const tabEl = document.getElementById(round===2?'roundTab2':'roundTab3');
+      if (tabEl) switchRound(round, tabEl);
+    } else {
+      renderTaskScreen();
+    }
+    window.scrollTo({top:0, behavior:'smooth'});
   } catch(e) {
     hideLoading();
     showToast('Failed to load next zone. Try again.','error');
