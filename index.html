@@ -73,6 +73,8 @@
   .task-card.recount{border-left:3px solid var(--warning)}
   .task-card.done{opacity:.45}
   .task-card.new-zone{border-left:3px solid var(--success)}
+  .task-card.editable{opacity:1!important;cursor:pointer;}
+  .task-card.editable:hover{border-color:var(--accent);}
 
   .task-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
   .task-icon.pending{background:rgba(79,142,247,.12)}
@@ -209,12 +211,18 @@
   .recount-btn:hover{background:rgba(251,191,36,.25);}
   .recount-sent{font-size:11px;color:var(--success);padding:5px 10px;}
   .staff-select-mini{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12px;padding:4px 8px;outline:none;max-width:120px;}
+
+  .network-banner{position:fixed;top:0;left:0;right:0;background:var(--danger);color:#fff;font-size:12px;font-weight:500;text-align:center;padding:6px;z-index:1000;display:none;animation:slideDown .3s ease;}
+  @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
 </style>
 </head>
 <body>
 
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><span id="loadingMsg">Loading...</span></div>
 <div class="toast" id="toast"></div>
+
+<!-- Network status banner -->
+<div id="networkBanner" class="network-banner">⚠ No internet connection — counts will retry when reconnected</div>
 
 <!-- ══ ZONE COMPLETE MODAL ══ -->
 <div class="modal-overlay" id="zoneCompleteModal">
@@ -901,9 +909,12 @@ function renderTasks() {
         :isRecount?'<span class="badge badge-recount">Recount</span>'
         :isNew?'<span class="badge badge-new">New zone</span>'
         :'<span class="badge badge-pending">Pending</span>';
+      // Allow editing completed tasks if this counter was the original counter
+      const canEdit = isDone && (t.originalCounter === session.staff || t.assignedTo === session.staff);
       html+=`
-        <div class="task-card ${isRecount&&!isDone?'recount':''} ${isDone?'done':''} ${isNew&&!isDone?'new-zone':''}"
-             onclick="${isDone?'':` openCount(${t.rowId})`}">
+        <div class="task-card ${isRecount&&!isDone?'recount':''} ${isDone?'done':''}  ${isNew&&!isDone?'new-zone':''} ${canEdit?'editable':''}"
+             onclick="${isDone ? (canEdit ? `openCount(${t.rowId}, true)` : '') : `openCount(${t.rowId})`}"
+             style="${canEdit?'cursor:pointer;opacity:1;':''}">
           <div class="task-icon ${iconClass}">${icon}</div>
           <div class="task-info">
             <div class="task-loc">${t.locationCode}</div>
@@ -915,7 +926,10 @@ function renderTasks() {
           <div class="task-meta">
             ${badge}
   
-            ${isDone?`<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${t.submittedQty}</div>`:'<div class="chevron">›</div>'}
+            ${isDone
+              ? `<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${t.submittedQty}</div>
+                 ${canEdit ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">tap to edit</div>' : ''}`
+              : '<div class="chevron">›</div>'}
           </div>
         </div>`;
     });
@@ -1076,16 +1090,25 @@ function closeZoneModal() {
 }
 
 // ── COUNT ENTRY ──────────────────────────────────────────────
-function openCount(rowId) {
+function openCount(rowId, isEdit) {
   currentTask = allTasks.find(t=>t.rowId===rowId);
   if (!currentTask) return;
-  qtyStr='0';
+
+  // Pre-fill with previous quantity if editing
+  if (isEdit && currentTask.submittedQty !== '') {
+    qtyStr = String(currentTask.submittedQty);
+  } else {
+    qtyStr = '0';
+  }
+
   document.getElementById('countLoc').textContent  = currentTask.locationCode;
   document.getElementById('countSku').textContent  = currentTask.sku;
   document.getElementById('countDesc').textContent = currentTask.description;
   document.getElementById('countNotes').value      = '';
   document.getElementById('submitBtn').disabled    = false;
-  currentTask.round = 1; // regular first count
+  document.getElementById('submitBtn').textContent = isEdit ? 'Update count' : 'Submit count';
+  currentTask.round    = 1;
+  currentTask.isEdit   = isEdit || false;
   updateQtyDisplay();
   // Show supplier SKU if available
   const supWrap = document.getElementById('supplierSkuWrap');
@@ -1114,8 +1137,18 @@ function openCount(rowId) {
     imgWrap.classList.remove('show');
     img.src = '';
   }
-  // Never show previous count — blind counting policy
-  document.getElementById('recountBanner').style.display='none';
+  // Show edit banner if editing, otherwise hide
+  const rb = document.getElementById('recountBanner');
+  if (isEdit) {
+    rb.style.display   = 'flex';
+    rb.style.borderColor = 'rgba(79,142,247,0.3)';
+    rb.style.background  = 'rgba(79,142,247,0.1)';
+    rb.style.color       = 'var(--accent2)';
+    document.getElementById('prevCountDisplay').textContent =
+      currentTask.submittedQty + ' — update if incorrect';
+  } else {
+    rb.style.display = 'none';
+  }
   showScreen('countScreen');
 }
 
@@ -1147,32 +1180,70 @@ async function submitCount() {
   if(!currentTask) return;
   const qty=parseFloat(qtyStr);
   if(isNaN(qty)||qty<0){ showToast('Enter a valid quantity','error'); return; }
+
+  // Confirmation dialog for suspiciously large quantities
+  const LARGE_QTY_THRESHOLD = 500;
+  if (qty > LARGE_QTY_THRESHOLD) {
+    const confirmed = confirm(`You entered ${qty} units for ${currentTask.sku}. Is this correct?`);
+    if (!confirmed) {
+      document.getElementById('submitBtn').disabled = false;
+      return;
+    }
+  }
+
   document.getElementById('submitBtn').disabled=true;
   showLoading('Saving count...');
-  // Route to correct action based on round
-  const round = currentTask.round || 1;
-  const action = round === 1 ? 'submitCount' : 'submitRecount';
-  const payload = {
+  // Route to correct action based on round and edit mode
+  const round    = currentTask.round || 1;
+  const isEditMode = currentTask.isEdit || false;
+  const action   = isEditMode ? 'editCount' : (round === 1 ? 'submitCount' : 'submitRecount');
+  const payload  = {
     action, round,
     rowId:currentTask.rowId, sku:currentTask.sku,
     locationCode:currentTask.locationCode, submittedQty:qty,
     notes:document.getElementById('countNotes').value.trim(), staff:session.staff
   };
   try {
-    if(!demoMode) await apiCall(payload);
+    if(!demoMode) {
+      // Retry logic — attempt up to 3 times with 2 second delay between attempts
+      let lastError;
+      let success = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await apiCall(payload);
+          success = true;
+          break;
+        } catch(retryErr) {
+          lastError = retryErr;
+          if (attempt < 3) {
+            showToast(`Save failed — retrying (${attempt}/3)...`, 'error');
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+      }
+      if (!success) throw lastError;
+    }
     // Update local task list
     const taskList = round === 1 ? allTasks : recountTasks;
     const task = taskList.find(t=>t.rowId===currentTask.rowId);
     if(task){
-      task.status='Complete';
-      task.notes=payload.notes;
-      task.isNew=false;
-      if(round===1) task.submittedQty=qty;
-      else if(round===2) task.recountQty=qty;
-      else if(round===3) task.finalCount=qty;
+      if (isEditMode) {
+        // Edit — update qty and recalculate status locally
+        task.submittedQty = qty;
+        task.isEdit       = false;
+        // Status will be refreshed on next task load from server
+      } else {
+        task.status='Complete';
+        task.notes=payload.notes;
+        task.isNew=false;
+        if(round===1) task.submittedQty=qty;
+        else if(round===2) task.recountQty=qty;
+        else if(round===3) task.finalCount=qty;
+      }
     }
     hideLoading();
-    showToast(`✓ ${currentTask.sku} saved — qty: ${qty}`,'success');
+    document.getElementById('submitBtn').textContent = 'Submit count';
+    showToast(`✓ ${currentTask.sku} ${isEditMode?'updated':'saved'} — qty: ${qty}`,'success');
     if(round===1){ renderTaskScreen(); }
     else { renderRecountTaskList(round, recountTasks); }
     showScreen('taskScreen');
@@ -1588,6 +1659,19 @@ function showToast(msg,type) {
   el.textContent=msg; el.className='toast show'+(type?' '+type:'');
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
 }
+
+// ── NETWORK STATUS ──────────────────────────────────────────
+function updateNetworkStatus() {
+  const banner = document.getElementById('networkBanner');
+  if (!navigator.onLine) {
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+window.addEventListener('online',  updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);
+updateNetworkStatus();
 </script>
 </body>
 </html>
