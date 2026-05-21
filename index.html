@@ -1481,18 +1481,40 @@ async function switchRound(round, el) {
     return;
   }
 
-  // No local tasks — fetch from server (handles case where counter logs back in mid-recount)
+  // No local tasks — fetch from server
   showLoading(`Loading Round ${round} tasks...`);
   try {
     let tasks = [];
     if (!demoMode) {
       const data = await apiCall({ action:'getRecountTasks', staff:session.staff, round });
       tasks = data.tasks || [];
-      // Merge fetched tasks into allTasks so they persist across tab switches
-      tasks.forEach(t => {
-        if (!allTasks.find(a => a.rowId === t.rowId)) {
-          allTasks.push(t);
+
+      // If no tasks returned, check if there's a recount zone to claim
+      if (tasks.length === 0) {
+        showLoading(`Checking for Round ${round} zones...`);
+        const nextData = await apiCall({ action:'getNextZone', staff:session.staff });
+        const nextZone = nextData.nextZone || null;
+
+        if (nextZone && nextZone.isRecount && nextZone.round === round) {
+          showLoading(`Assigning Round ${round} zone ${nextZone.zone}...`);
+          const claimData = await apiCall({
+            action: 'claimZone',
+            staff:  session.staff,
+            zone:   nextZone.zone,
+            round:  round
+          });
+          tasks = (claimData.tasks || []).map(t => ({
+            ...t, isNew:true, round, taskType: round===2?'Recount 2':'Recount 3'
+          }));
+          if (tasks.length > 0) {
+            showToast(`Round ${round} zone ${nextZone.zone} assigned — ${tasks.length} SKUs`, 'success');
+          }
         }
+      }
+
+      // Merge into allTasks
+      tasks.forEach(t => {
+        if (!allTasks.find(a => a.rowId === t.rowId)) allTasks.push(t);
       });
     }
     recountTasks = tasks;
