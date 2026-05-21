@@ -832,7 +832,13 @@ function logout() {
 function setFilter(f,btn) {
   taskFilter=f;
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active'); renderTasks();
+  btn.classList.add('active');
+  // If on recount round, re-render recount list with filter applied
+  if (currentRound > 1) {
+    renderRecountTaskList(currentRound, recountTasks);
+  } else {
+    renderTasks();
+  }
 }
 
 function renderTaskScreen() {
@@ -865,9 +871,13 @@ function renderTaskScreen() {
 
 function renderTasks() {
   const search = document.getElementById('searchInput').value.toLowerCase();
-  let filtered = allTasks.filter(t => {
+
+  // Use correct task source based on current round
+  const taskSource = currentRound > 1 ? recountTasks : allTasks;
+
+  let filtered = taskSource.filter(t => {
     if (taskFilter==='pending') return t.status==='Pending';
-    if (taskFilter==='recount') return t.taskType==='Recount';
+    if (taskFilter==='recount') return t.taskType==='Recount 2' || t.taskType==='Recount 3' || t.taskType==='Recount';
     if (taskFilter==='done')    return t.status==='Complete';
     return true;
   });
@@ -913,7 +923,7 @@ function renderTasks() {
       const canEdit = isDone && (t.originalCounter === session.staff || t.assignedTo === session.staff);
       html+=`
         <div class="task-card ${isRecount&&!isDone?'recount':''} ${isDone?'done':''}  ${isNew&&!isDone?'new-zone':''} ${canEdit?'editable':''}"
-             onclick="${isDone ? (canEdit ? `openCount(${t.rowId}, true)` : '') : `openCount(${t.rowId})`}"
+             onclick="${isDone ? (canEdit ? `openCount(${t.rowId}, true)` : '') : (currentRound > 1 ? `openRecountCount(${t.rowId}, ${currentRound})` : `openCount(${t.rowId})`)}"
              style="${canEdit?'cursor:pointer;opacity:1;':''}">
           <div class="task-icon ${iconClass}">${icon}</div>
           <div class="task-info">
@@ -1548,9 +1558,14 @@ function renderRecountTaskList(round, tasks) {
     return;
   }
 
+  // Apply filter if set
+  let displayTasks = tasks;
+  if (taskFilter === 'pending') displayTasks = tasks.filter(t => t.status === 'Pending');
+  if (taskFilter === 'done')    displayTasks = tasks.filter(t => t.status === 'Complete');
+
   // Group by zone
   const groups = {};
-  tasks.forEach(t => {
+  displayTasks.forEach(t => {
     if (!groups[t.zone]) groups[t.zone] = [];
     groups[t.zone].push(t);
   });
