@@ -83,9 +83,9 @@
   .task-icon.new{background:rgba(52,211,153,.12)}
 
   .task-info{flex:1;min-width:0}
-  .task-loc{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent2);margin-bottom:2px}
-  .task-sku{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
-  .task-desc{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .task-loc{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--accent2);margin-bottom:3px}
+  .task-sku{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+  .task-desc{font-size:14px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .task-meta{text-align:right;flex-shrink:0}
 
   .badge{display:inline-block;font-size:10px;font-weight:500;padding:3px 8px;border-radius:20px}
@@ -1651,7 +1651,6 @@ function renderRecountTaskList(round, tasks) {
     groups[zone].forEach(t => {
       const isDone   = t.status === 'Complete';
 
-
       html += `
         <div class="task-card ${isDone?'done editable':'recount'}" onclick="openRecountCount(${t.rowId},${round})">
           <div class="task-icon ${isDone?'done':'recount'}">${isDone?'✓':'↩'}</div>
@@ -1659,7 +1658,8 @@ function renderRecountTaskList(round, tasks) {
             <div class="task-loc">${t.locationCode}</div>
             <div class="task-sku">${t.sku}</div>
             <div class="task-desc">${t.description}</div>
-            <div style="font-size:11px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;">
+            ${t.supplierSku ? `<div style="font-family:var(--mono);font-size:12px;color:var(--text3);margin-top:2px;">Supplier: ${t.supplierSku}</div>` : ''}
+            <div style="font-size:12px;margin-top:3px;">
               <span style="color:var(--text3);">Zone ${t.zone} · ${round===2?'Round 2':'Round 3'} recount</span>
             </div>
           </div>
