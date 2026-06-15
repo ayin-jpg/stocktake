@@ -15,7 +15,7 @@
     --mono:'DM Mono',monospace; --sans:'DM Sans',sans-serif;
     --radius:12px; --radius-sm:8px;
   }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
   body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
   .screen{display:none;min-height:100vh;flex-direction:column}
   .screen.active{display:flex}
@@ -36,7 +36,7 @@
   select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.15)}
   select option{background:var(--surface2)}
 
-  .btn{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;touch-action:manipulation;}
   .btn-primary{background:var(--accent);color:#fff}
   .btn-primary:hover{background:var(--accent2);transform:translateY(-1px)}
   .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}
@@ -120,7 +120,7 @@
   .qty-display.zero-locked{color:#fff!important}
 
   .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 16px 16px}
-  .numpad-btn{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:22px;font-weight:500;padding:18px 0;cursor:pointer;transition:all .1s;text-align:center;-webkit-user-select:none;user-select:none}
+  .numpad-btn{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:22px;font-weight:500;padding:18px 0;cursor:pointer;transition:all .1s;text-align:center;-webkit-user-select:none;user-select:none;touch-action:manipulation;}
   .numpad-btn:active{background:var(--surface2);transform:scale(.96);border-color:var(--border2)}
   .numpad-btn.del{color:var(--text2);font-size:18px}
 
