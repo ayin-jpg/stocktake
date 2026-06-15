@@ -864,23 +864,11 @@ async function autoClaimFirstZone(staffName) {
       round:  round
     });
 
-    // If zone was just taken by another counter, automatically fetch and claim the next one
-    if (claimData.retry) {
-      showToast('Zone just taken — finding next available...', 'error');
-      showLoading('Finding your zone...');
-      const retryNext = await apiCall({action:'getNextZone', staff:staffName});
-      if (retryNext.nextZone) {
-        showLoading(`Assigning zone ${retryNext.nextZone.zone} to you...`);
-        claimData = await apiCall({
-          action: 'claimZone',
-          staff:  staffName,
-          zone:   retryNext.nextZone.zone,
-          round:  retryNext.nextZone.round || round
-        });
-      } else {
-        showToast('No zones available — speak to your supervisor', 'error');
-        return [];
-      }
+    // If server couldn't assign the zone, show a message — don't retry in a loop
+    if (claimData.retry || claimData.error) {
+      showToast(claimData.error || 'Could not assign zone — please try again', 'error');
+      hideLoading();
+      return [];
     }
 
     const newTasks = claimData.tasks || [];
