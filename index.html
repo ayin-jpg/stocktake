@@ -1539,18 +1539,8 @@ async function switchRound(round, el) {
     return;
   }
 
-  // Check allTasks first — recount tasks claimed via next zone flow are already there
-  const roundType  = round === 2 ? 'Recount 2' : 'Recount 3';
-  const localTasks = allTasks.filter(t => t.taskType === roundType || t.round === round);
-
-  if (localTasks.length > 0) {
-    // Tasks already loaded via next zone — use them directly
-    recountTasks = localTasks;
-    renderRecountTaskList(round, recountTasks);
-    return;
-  }
-
-  // No local tasks — fetch from server
+  // Always fetch fresh from server — allTasks only has Round 1 tasks after re-login
+  // and we need the latest recountQty/finalCount values to show correct done state
   showLoading(`Loading Round ${round} tasks...`);
   try {
     let tasks = [];
@@ -1581,7 +1571,7 @@ async function switchRound(round, el) {
         }
       }
 
-      // Merge into allTasks
+      // Merge into allTasks so submit routing works correctly
       tasks.forEach(t => {
         if (!allTasks.find(a => a.rowId === t.rowId)) allTasks.push(t);
       });
