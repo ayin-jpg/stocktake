@@ -864,12 +864,7 @@ async function autoClaimFirstZone(staffName) {
       round:  round
     });
 
-    // If server couldn't assign the zone, show a message — don't retry in a loop
-    if (claimData.retry || claimData.error) {
-      showToast(claimData.error || 'Could not assign zone — please try again', 'error');
-      hideLoading();
-      return [];
-    }
+
 
     const newTasks = claimData.tasks || [];
     if (newTasks.length > 0) {
