@@ -757,6 +757,8 @@ async function handleLogin() {
       if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
       }
+      // Always persist after load so cache stays up to date
+      saveCachedTasks(name, allTasks);
     }
     session = {staff:name, loginTime:Date.now()};
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -782,6 +784,8 @@ function loadCounterSession() {
       if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
       }
+      // Always persist after load so cache stays up to date
+      saveCachedTasks(name, allTasks);
       hideLoading();
       renderTaskScreen();
       showScreen('taskScreen');
@@ -854,8 +858,9 @@ function renderTaskScreen() {
   document.getElementById('counterAvatar').textContent     = name.charAt(0).toUpperCase();
 
   const total   = allTasks.length;
-  const doneStatuses = ['Complete','Recount 2','Recount Round 2','Recount 3','Recount Round 3','Recount'];
-  const done    = allTasks.filter(t=>doneStatuses.includes(t.status)).length;
+  // A SKU is "done" as soon as the counter has physically entered a qty — regardless of
+  // what status the server has since assigned (Complete, Recount 2, etc.)
+  const done    = allTasks.filter(t => t.submittedQty !== '' && t.submittedQty !== undefined && t.submittedQty !== null).length;
   const pending = total - done;
 
   document.getElementById('statTotal').textContent   = total;
@@ -1751,14 +1756,29 @@ function mergeWithCachedTasks(staffName, serverTasks) {
     const all = JSON.parse(localStorage.getItem(TASKS_KEY) || '{}');
     const cached = all[staffName] || [];
     if (!cached.length) return serverTasks;
-    // Start with server tasks as source of truth for status updates
+
+    // Build a map of server tasks so we can update cache entries with latest server status
+    const serverMap = {};
+    serverTasks.forEach(t => { serverMap[t.rowId] = t; });
+
+    // Start with server tasks as the base
     const merged = [...serverTasks];
     const serverIds = new Set(serverTasks.map(t => t.rowId));
-    // Add any cached tasks the server didn't return (e.g. recount-status SKUs dropped by server)
+
     cached.forEach(ct => {
-      if (!serverIds.has(ct.rowId)) {
-        // Only keep it if it was submitted (has a qty) — don't resurface truly pending orphans
+      if (serverIds.has(ct.rowId)) {
+        // Server returned it — update the server copy with our cached submittedQty if server wiped it
+        const st = serverMap[ct.rowId];
+        if ((st.submittedQty === '' || st.submittedQty === undefined) &&
+            ct.submittedQty !== '' && ct.submittedQty !== undefined) {
+          st.submittedQty = ct.submittedQty;
+        }
+      } else {
+        // Server dropped it (recount-status SKU no longer returned for this counter)
+        // Only restore if it was actually submitted — don't resurface unsubmitted orphans
         if (ct.submittedQty !== '' && ct.submittedQty !== undefined) {
+          // Preserve the cached status; if it was Complete locally, keep it as Complete
+          // so the stats count it correctly. The amber "Recount raised" label handles the UI.
           merged.push({...ct, _fromCache: true});
         }
       }
