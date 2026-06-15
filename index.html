@@ -753,42 +753,9 @@ async function handleLogin() {
     } else {
       const data = await apiCall({action:'getTasks', staff:name});
       allTasks = data.tasks||[];
-
-      // Always check for active recount tasks regardless of Round 1 task count
-      // getTasks returns Round 1 history which means allTasks.length > 0 even when
-      // the counter's real work is in a recount round
-      const r2data  = await apiCall({action:'getRecountTasks', staff:name, round:2});
-      const r2tasks = r2data.tasks || [];
-      const r3data  = await apiCall({action:'getRecountTasks', staff:name, round:3});
-      const r3tasks = r3data.tasks || [];
-
-      const r2pending = r2tasks.filter(t => t.recountQty === '' || t.recountQty === undefined || t.recountQty === null);
-      const r3pending = r3tasks.filter(t => t.finalCount  === '' || t.finalCount  === undefined || t.finalCount  === null);
-
-      session = {staff:name, loginTime:Date.now()};
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-
-      if (r3pending.length > 0) {
-        // Go straight to round 3 tab — skip rendering round 1 screen to avoid flash
-        showScreen('taskScreen');
-        const tabEl = document.getElementById('roundTab3');
-        if (tabEl) await switchRound(3, tabEl);
-      } else if (r2pending.length > 0) {
-        // Go straight to round 2 tab — skip rendering round 1 screen to avoid flash
-        showScreen('taskScreen');
-        const tabEl = document.getElementById('roundTab2');
-        if (tabEl) await switchRound(2, tabEl);
-      } else if (allTasks.length === 0 && r2tasks.length === 0 && r3tasks.length === 0) {
-        hideLoading();
+      if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
-        renderTaskScreen();
-        showScreen('taskScreen');
-      } else {
-        hideLoading();
-        renderTaskScreen();
-        showScreen('taskScreen');
       }
-      return;
     }
     session = {staff:name, loginTime:Date.now()};
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -808,36 +775,12 @@ function loadCounterSession() {
   apiCall({action:'getTasks', staff:name})
     .then(async data => {
       allTasks = data.tasks||[];
-
-      // Always check for active recount tasks — even if getTasks returned Round 1 history,
-      // the counter may be mid-way through a recount zone and should land on that tab
-      const r2data  = await apiCall({action:'getRecountTasks', staff:name, round:2});
-      const r2tasks = r2data.tasks || [];
-      const r3data  = await apiCall({action:'getRecountTasks', staff:name, round:3});
-      const r3tasks = r3data.tasks || [];
-
-      // Determine if counter has pending (uncounted) recount tasks
-      const r2pending = r2tasks.filter(t => t.recountQty === '' || t.recountQty === undefined || t.recountQty === null);
-      const r3pending = r3tasks.filter(t => t.finalCount  === '' || t.finalCount  === undefined || t.finalCount  === null);
-
-      if (r3pending.length > 0) {
-        showScreen('taskScreen');
-        const tabEl = document.getElementById('roundTab3');
-        if (tabEl) await switchRound(3, tabEl);
-      } else if (r2pending.length > 0) {
-        showScreen('taskScreen');
-        const tabEl = document.getElementById('roundTab2');
-        if (tabEl) await switchRound(2, tabEl);
-      } else if (allTasks.length === 0 && r2tasks.length === 0 && r3tasks.length === 0) {
-        hideLoading();
+      if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
-        renderTaskScreen();
-        showScreen('taskScreen');
-      } else {
-        hideLoading();
-        renderTaskScreen();
-        showScreen('taskScreen');
       }
+      hideLoading();
+      renderTaskScreen();
+      showScreen('taskScreen');
     })
     .catch(() => { hideLoading(); initLogin(); });
 }
