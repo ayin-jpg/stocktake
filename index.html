@@ -1597,8 +1597,16 @@ async function switchRound(round, el) {
 
 function renderRecountTaskList(round, tasks) {
   const roundLabel = round === 2 ? 'Recount (Round 2)' : 'Final Count (Round 3)';
-  const pending = tasks.filter(t => t.status === 'Pending');
-  const done    = tasks.filter(t => t.status === 'Complete');
+
+  // A recount task is "done" when its qty field has been filled in,
+  // NOT based on status — because the server sends 'Recount Round 2' (not 'Pending'/'Complete')
+  // until the recount is submitted. Using the qty field is the only reliable signal.
+  const isRecountDone = t => round === 2
+    ? (t.recountQty !== '' && t.recountQty !== undefined && t.recountQty !== null)
+    : (t.finalCount !== '' && t.finalCount !== undefined && t.finalCount !== null);
+
+  const done    = tasks.filter(t => isRecountDone(t));
+  const pending = tasks.filter(t => !isRecountDone(t));
 
   document.getElementById('statTotal').textContent   = tasks.length;
   document.getElementById('statPending').textContent = pending.length;
@@ -1619,8 +1627,8 @@ function renderRecountTaskList(round, tasks) {
 
   // Apply filter if set
   let displayTasks = tasks;
-  if (taskFilter === 'pending') displayTasks = tasks.filter(t => t.status === 'Pending');
-  if (taskFilter === 'done')    displayTasks = tasks.filter(t => t.status === 'Complete');
+  if (taskFilter === 'pending') displayTasks = tasks.filter(t => !isRecountDone(t));
+  if (taskFilter === 'done')    displayTasks = tasks.filter(t => isRecountDone(t));
 
   // Group by zone
   const groups = {};
@@ -1637,7 +1645,10 @@ function renderRecountTaskList(round, tasks) {
     </div>`;
     lastZone = zone;
     groups[zone].forEach(t => {
-      const isDone   = t.status === 'Complete';
+      // Use qty field to determine done state — same logic as stats above
+      const isDone = round === 2
+        ? (t.recountQty !== '' && t.recountQty !== undefined && t.recountQty !== null)
+        : (t.finalCount !== '' && t.finalCount !== undefined && t.finalCount !== null);
 
       html += `
         <div class="task-card ${isDone?'done editable':'recount'}" onclick="openRecountCount(${t.rowId},${round})">
