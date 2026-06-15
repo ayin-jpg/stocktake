@@ -548,6 +548,7 @@ let currentTask  = null;
 let qtyStr       = '0';
 let taskFilter   = 'all';
 let demoMode     = false;
+let savedScrollY = 0;    // remembers task list scroll position between counts
 let pendingNextZone = null; // zone object queued up for acceptance
 let allStaffNames   = [];   // cached staff list for recount assignment
 let recountTasks    = [];   // recount tasks for current counter
@@ -610,10 +611,10 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── SCREENS ─────────────────────────────────────────────────
-function showScreen(id) {
+function showScreen(id, preserveScroll) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  window.scrollTo(0,0);
+  if (!preserveScroll) window.scrollTo(0, 0);
 }
 
 // ── CONFIG ───────────────────────────────────────────────────
@@ -909,21 +910,28 @@ function renderTasks() {
       lastZone=zone;
     }
     groups[key].forEach(t=>{
-      const isDone=t.status==='Complete';
+      // Treat tasks flagged for recount as "done" on Round 1 tab — counter submitted a value,
+      // the server just promoted the status. They should still see and be able to edit it.
+      const isRecountStatus = t.status === 'Recount 2' || t.status === 'Recount Round 2' ||
+                              t.status === 'Recount 3' || t.status === 'Recount Round 3' ||
+                              t.status === 'Recount';
+      const isDone = t.status === 'Complete' || isRecountStatus;
       const isRecount=t.taskType==='Recount';
       const isNew=t.isNew;
       const iconClass=isDone?'done':isRecount?'recount':isNew?'new':'pending';
       const icon=isDone?'✓':isRecount?'↩':isNew?'★':'○';
       const badge=isDone
-        ?'<span class="badge badge-done">Done</span>'
+        ? (isRecountStatus
+            ? '<span class="badge badge-recount">Recount raised</span>'
+            : '<span class="badge badge-done">Done</span>')
         :isRecount?'<span class="badge badge-recount">Recount</span>'
         :isNew?'<span class="badge badge-new">New zone</span>'
         :'<span class="badge badge-pending">Pending</span>';
-      // Allow editing completed tasks if this counter was the original counter
-      const canEdit = isDone && (t.originalCounter === session.staff || t.assignedTo === session.staff);
+      // On Round 1 tab, any task in allTasks belongs to this counter — always editable if done
+      const canEdit = isDone && currentRound === 1;
       html+=`
-        <div class="task-card ${isRecount&&!isDone?'recount':''} ${isDone?'done':''}  ${isNew&&!isDone?'new-zone':''} ${canEdit?'editable':''}"
-             onclick="${isDone ? (canEdit ? `openCount(${t.rowId}, true)` : '') : (currentRound > 1 ? `openRecountCount(${t.rowId}, ${currentRound})` : `openCount(${t.rowId})`)}"
+        <div class="task-card ${isDone?'done':''}  ${isNew&&!isDone?'new-zone':''} ${canEdit?'editable':''}"
+             onclick="${isDone ? `openCount(${t.rowId}, true)` : `openCount(${t.rowId})`}"
              style="${canEdit?'cursor:pointer;opacity:1;':''}">
           <div class="task-icon ${iconClass}">${icon}</div>
           <div class="task-info">
@@ -931,14 +939,14 @@ function renderTasks() {
             <div class="task-sku">${t.sku}</div>
             <div class="task-desc">${t.description}</div>
             ${t.supplierSku ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:2px;">Supplier: ${t.supplierSku}</div>` : ''}
+            ${isRecountStatus ? `<div style="font-size:11px;color:var(--warning);margin-top:3px;">↩ Flagged for recount — tap to correct your count</div>` : ''}
           </div>
           ${t.imageUrl && !isDone ? `<div style="flex-shrink:0;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--surface2);margin-left:-4px;"><img src="${t.imageUrl}" style="width:100%;height:100%;object-fit:contain;" onerror="if(!this._p){this._p=true;this.src='https://corsproxy.io/?'+encodeURIComponent(this.src)}else{this.parentElement.style.display='none'}"></div>` : ''}
           <div class="task-meta">
             ${badge}
-  
             ${isDone
-              ? `<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${t.submittedQty}</div>
-                 ${canEdit ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">tap to edit</div>' : ''}`
+              ? `<div style="font-family:var(--mono);font-size:12px;color:${isRecountStatus?'var(--warning)':'var(--success)'};margin-top:4px;">${t.submittedQty}</div>
+                 <div style="font-size:10px;color:var(--text3);margin-top:2px;">tap to edit</div>`
               : '<div class="chevron">›</div>'}
           </div>
         </div>`;
@@ -1101,6 +1109,7 @@ function closeZoneModal() {
 
 // ── COUNT ENTRY ──────────────────────────────────────────────
 function openCount(rowId, isEdit) {
+  savedScrollY = window.scrollY;  // save position before leaving list
   currentTask = allTasks.find(t=>t.rowId===rowId);
   if (!currentTask) return;
 
@@ -1256,7 +1265,9 @@ async function submitCount() {
     showToast(`✓ ${currentTask.sku} ${isEditMode?'updated':'saved'} — qty: ${qty}`,'success');
     if(round===1){ renderTaskScreen(); }
     else { renderRecountTaskList(round, recountTasks); }
-    showScreen('taskScreen');
+    showScreen('taskScreen', true);
+    // Restore scroll position so counter stays where they were in the list
+    requestAnimationFrame(() => window.scrollTo(0, savedScrollY));
   } catch(e) {
     hideLoading();
     document.getElementById('submitBtn').disabled=false;
@@ -1264,7 +1275,7 @@ async function submitCount() {
   }
 }
 
-function backToTasks() { currentTask=null; showScreen('taskScreen'); }
+function backToTasks() { currentTask=null; showScreen('taskScreen', true); requestAnimationFrame(() => window.scrollTo(0, savedScrollY)); }
 
 // ── SUPERVISOR ───────────────────────────────────────────────
 async function showSupervisor() {
@@ -1295,7 +1306,8 @@ async function loadSupervisorData() {
 
 function renderSupervisorData(tasks, zoneQueue) {
   const total  = tasks.length;
-  const done   = tasks.filter(t=>t.status==='Complete').length;
+  const doneStatuses = ['Complete','Recount 2','Recount Round 2','Recount 3','Recount Round 3','Recount'];
+  const done   = tasks.filter(t=>doneStatuses.includes(t.status)).length;
   const pending= total-done;
   const pct    = total?Math.round(done/total*100):0;
   document.getElementById('supTotal').textContent        = total;
@@ -1334,24 +1346,35 @@ function renderSupervisorData(tasks, zoneQueue) {
   }
 
   // counter progress with zone tags
+  // Use originalCounter as fallback when assignedTo is blank (happens when counter exits mid-count)
   const byStaff={};
   tasks.forEach(t=>{
-    if(!byStaff[t.assignedTo]) byStaff[t.assignedTo]={total:0,done:0,zones:new Set()};
-    byStaff[t.assignedTo].total++;
-    byStaff[t.assignedTo].zones.add(t.zone);
-    if(t.status==='Complete') byStaff[t.assignedTo].done++;
+    const owner = (t.assignedTo && t.assignedTo.trim()) || (t.originalCounter && t.originalCounter.trim()) || '— Unassigned —';
+    if(!byStaff[owner]) byStaff[owner]={total:0,done:0,zones:new Set(),hasOrphans:false};
+    byStaff[owner].total++;
+    byStaff[owner].zones.add(t.zone);
+    if(t.status==='Complete') byStaff[owner].done++;
+    if(!t.assignedTo || !t.assignedTo.trim()) byStaff[owner].hasOrphans=true;
   });
 
   let cpHtml='';
   Object.keys(byStaff).sort().forEach(name=>{
     const s=byStaff[name];
     const p=s.total?Math.round(s.done/s.total*100):0;
+    const isUnassigned = name === '— Unassigned —';
     const zoneTags=[...s.zones].sort().map(z=>`<span class="progress-zone-tag ${p===100?'done':''}">${z}</span>`).join('');
     cpHtml+=`
-      <div class="progress-card">
-        <div class="progress-top"><span class="progress-name">${name}</span><span class="progress-frac">${s.done}/${s.total} &nbsp;<strong style="color:var(--accent)">${p}%</strong></span></div>
+      <div class="progress-card" style="${isUnassigned?'border-color:rgba(248,113,113,.3);':s.hasOrphans?'border-color:rgba(251,191,36,.3);':''}">
+        <div class="progress-top">
+          <span class="progress-name" style="${isUnassigned?'color:var(--danger);':''}">
+            ${isUnassigned?'⚠ '+name:name}
+            ${s.hasOrphans&&!isUnassigned?'<span style="font-size:11px;color:var(--warning);margin-left:6px;">⚠ some SKUs unassigned</span>':''}
+          </span>
+          <span class="progress-frac">${s.done}/${s.total} &nbsp;<strong style="color:var(--accent)">${p}%</strong></span>
+        </div>
         <div class="progress-zone-tags">${zoneTags}</div>
         <div class="progress-bar-wrap"><div class="progress-bar-fill ${p===100?'full':''}" style="width:${p}%"></div></div>
+        ${isUnassigned?`<div style="font-size:11px;color:var(--danger);margin-top:8px;">These SKUs have no counter assigned — they were counted but the counter assignment was lost. Reassign via the Variances tab or your sheet.</div>`:''}
       </div>`;
   });
   document.getElementById('counterProgress').innerHTML=cpHtml||'<p style="color:var(--text2);font-size:14px;">No data yet.</p>';
@@ -1366,7 +1389,7 @@ function renderSupervisorData(tasks, zoneQueue) {
       zqHtml+=`
         <div class="zone-row">
           <span class="zone-code">${z.zone}</span>
-          <span class="zone-status ${statusClass}">${statusIcon} ${z.status}${z.assignedTo?' — '+z.assignedTo:''}</span>
+          <span class="zone-status ${statusClass}">${statusIcon} ${z.status}${z.assignedTo?' — '+z.assignedTo:(z.status==='In Progress'?' — <span style="color:var(--warning)">⚠ counter unassigned</span>':'')}</span>
           <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${z.skuCount} SKUs</span>
         </div>`;
     });
@@ -1388,9 +1411,10 @@ function renderSupervisorData(tasks, zoneQueue) {
       vHtml+=`<div class="var-row ${pos?'positive':'negative'}">
         <div class="var-info">
           <div class="var-sku">${t.sku}</div>
-          <div class="var-loc">${t.locationCode} · ${t.originalCounter ? t.originalCounter : t.assignedTo}</div>
+          <div class="var-loc">${t.locationCode} · ${(t.originalCounter||t.assignedTo||'Unknown counter')}</div>
           <div class="var-loc">Expected: ${t.expectedQty} · Counted: ${total}</div>
-          ${t.recountQty !== '' ? `<div class="var-loc" style="color:var(--warning);">Recount: ${t.recountQty} by ${t.assignedTo}</div>` : ''}
+          ${!t.assignedTo ? `<div class="var-loc" style="color:var(--danger);font-size:11px;">⚠ Counter unassigned — check sheet</div>` : ''}
+          ${t.recountQty !== '' ? `<div class="var-loc" style="color:var(--warning);">Recount: ${t.recountQty} by ${t.assignedTo||'unknown'}</div>` : ''}
         </div>
         <div class="var-row-actions">
           <div class="var-num ${pos?'pos':'neg'}">${pos?'+':''}${diff}</div>
@@ -1582,7 +1606,7 @@ function renderRecountTaskList(round, tasks) {
 
 
       html += `
-        <div class="task-card ${isDone?'done':'recount'}" onclick="${isDone?'':` openRecountCount(${t.rowId},${round})`}">
+        <div class="task-card ${isDone?'done editable':'recount'}" onclick="openRecountCount(${t.rowId},${round})">
           <div class="task-icon ${isDone?'done':'recount'}">${isDone?'✓':'↩'}</div>
           <div class="task-info">
             <div class="task-loc">${t.locationCode}</div>
@@ -1594,7 +1618,10 @@ function renderRecountTaskList(round, tasks) {
           </div>
           <div class="task-meta">
             <span class="badge ${isDone?'badge-done':'badge-recount'}">${isDone?'Done':'↩'}</span>
-            ${isDone?`<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${round===2?t.recountQty:t.finalCount}</div>`:'<div class="chevron">›</div>'}
+            ${isDone
+              ? `<div style="font-family:var(--mono);font-size:12px;color:var(--success);margin-top:4px;">${round===2?t.recountQty:t.finalCount}</div>
+                 <div style="font-size:10px;color:var(--text3);margin-top:2px;">tap to edit</div>`
+              : '<div class="chevron">›</div>'}
           </div>
         </div>`;
     });
@@ -1603,20 +1630,42 @@ function renderRecountTaskList(round, tasks) {
 }
 
 function openRecountCount(rowId, round) {
+  savedScrollY = window.scrollY;  // save position before leaving list
   const tasks = round === 1 ? allTasks : recountTasks;
   currentTask = tasks.find(t => t.rowId === rowId);
   if (!currentTask) return;
   currentTask.round = round;
-  qtyStr = '0';
+
+  const isEdit = currentTask.status === 'Complete';
+  currentTask.isEdit = isEdit;
+
+  // Pre-fill quantity if editing an already-submitted recount
+  if (isEdit) {
+    const existingQty = round === 2 ? currentTask.recountQty : currentTask.finalCount;
+    qtyStr = (existingQty !== '' && existingQty !== undefined) ? String(existingQty) : '0';
+  } else {
+    qtyStr = '0';
+  }
+
   document.getElementById('countLoc').textContent  = currentTask.locationCode;
   document.getElementById('countSku').textContent  = currentTask.sku;
   document.getElementById('countDesc').textContent = currentTask.description;
   document.getElementById('countNotes').value      = '';
   document.getElementById('submitBtn').disabled    = false;
+  document.getElementById('submitBtn').textContent = isEdit ? 'Update count' : 'Submit count';
   updateQtyDisplay();
 
-  // Recount banner hidden — previous count not shown to avoid skewing the count
-  document.getElementById('recountBanner').style.display = 'none';
+  // Show edit banner if editing a completed recount; hide for fresh recounts to avoid skewing
+  const rb = document.getElementById('recountBanner');
+  if (isEdit) {
+    rb.style.display     = 'flex';
+    rb.style.borderColor = 'rgba(79,142,247,0.3)';
+    rb.style.background  = 'rgba(79,142,247,0.1)';
+    rb.style.color       = 'var(--accent2)';
+    document.getElementById('prevCountDisplay').textContent = qtyStr + ' — update if incorrect';
+  } else {
+    rb.style.display = 'none';
+  }
 
   // Image
   const imgWrap = document.getElementById('productImageWrap');
