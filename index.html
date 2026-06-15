@@ -1690,6 +1690,16 @@ function openRecountCount(rowId, round) {
   document.getElementById('submitBtn').textContent = isEdit ? 'Update count' : 'Submit count';
   updateQtyDisplay();
 
+  // Show supplier SKU if available
+  const supWrap = document.getElementById('supplierSkuWrap');
+  const supVal  = document.getElementById('supplierSkuVal');
+  if (currentTask.supplierSku) {
+    supVal.textContent = currentTask.supplierSku;
+    supWrap.style.display = 'block';
+  } else {
+    supWrap.style.display = 'none';
+  }
+
   // Show edit banner if editing a completed recount; hide for fresh recounts to avoid skewing
   const rb = document.getElementById('recountBanner');
   if (isEdit) {
