@@ -530,6 +530,7 @@
 // ── STATE ──────────────────────────────────────────────────
 const CONFIG_KEY  = 'stocktake_config';
 const SESSION_KEY = 'stocktake_session';
+const TASKS_KEY   = 'stocktake_tasks';   // persists counter's own tasks across sessions
 
 const DEFAULT_CONFIG = {
   scriptUrl:      'https://script.google.com/macros/s/AKfycbymnhBIB3Y2WRDV1pszeEKOPDGfvACf02_eenT_X_Pmn-xk0IAoW71xvf90bpAKS2w/exec',
@@ -749,6 +750,9 @@ async function handleLogin() {
     } else {
       const data = await apiCall({action:'getTasks', staff:name});
       allTasks = data.tasks||[];
+      // Merge with any locally cached tasks — server may drop recount-status SKUs from
+      // the original counter's list, but we keep them visible so they can edit if needed
+      allTasks = mergeWithCachedTasks(name, allTasks);
       // If no tasks found, auto-claim the next available zone
       if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
@@ -772,6 +776,8 @@ function loadCounterSession() {
   apiCall({action:'getTasks', staff:name})
     .then(async data => {
       allTasks = data.tasks||[];
+      // Merge with cached tasks so recount-status SKUs stay visible
+      allTasks = mergeWithCachedTasks(name, allTasks);
       // If no tasks found on resume, auto-claim next available zone
       if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
@@ -848,7 +854,8 @@ function renderTaskScreen() {
   document.getElementById('counterAvatar').textContent     = name.charAt(0).toUpperCase();
 
   const total   = allTasks.length;
-  const done    = allTasks.filter(t=>t.status==='Complete').length;
+  const doneStatuses = ['Complete','Recount 2','Recount Round 2','Recount 3','Recount Round 3','Recount'];
+  const done    = allTasks.filter(t=>doneStatuses.includes(t.status)).length;
   const pending = total - done;
 
   document.getElementById('statTotal').textContent   = total;
@@ -877,9 +884,10 @@ function renderTasks() {
   const taskSource = currentRound > 1 ? recountTasks : allTasks;
 
   let filtered = taskSource.filter(t => {
+    const doneStatuses = ['Complete','Recount 2','Recount Round 2','Recount 3','Recount Round 3','Recount'];
     if (taskFilter==='pending') return t.status==='Pending';
     if (taskFilter==='recount') return t.taskType==='Recount 2' || t.taskType==='Recount 3' || t.taskType==='Recount';
-    if (taskFilter==='done')    return t.status==='Complete';
+    if (taskFilter==='done')    return doneStatuses.includes(t.status);
     return true;
   });
   if (search) filtered = filtered.filter(t=>
@@ -1263,6 +1271,8 @@ async function submitCount() {
     hideLoading();
     document.getElementById('submitBtn').textContent = 'Submit count';
     showToast(`✓ ${currentTask.sku} ${isEditMode?'updated':'saved'} — qty: ${qty}`,'success');
+    // Persist allTasks to localStorage so recount-flagged SKUs survive a refresh
+    saveCachedTasks(session.staff, allTasks);
     if(round===1){ renderTaskScreen(); }
     else { renderRecountTaskList(round, recountTasks); }
     showScreen('taskScreen', true);
@@ -1725,6 +1735,36 @@ function supTab(id,el) {
   document.querySelectorAll('.sup-tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   el.classList.add('active'); document.getElementById('tab-'+id).classList.add('active');
+}
+
+// ── TASK CACHE (survives refresh; keeps recount-flagged SKUs visible) ──────────
+function saveCachedTasks(staffName, tasks) {
+  try {
+    const all = JSON.parse(localStorage.getItem(TASKS_KEY) || '{}');
+    all[staffName] = tasks;
+    localStorage.setItem(TASKS_KEY, JSON.stringify(all));
+  } catch(e) { /* storage full — not critical */ }
+}
+
+function mergeWithCachedTasks(staffName, serverTasks) {
+  try {
+    const all = JSON.parse(localStorage.getItem(TASKS_KEY) || '{}');
+    const cached = all[staffName] || [];
+    if (!cached.length) return serverTasks;
+    // Start with server tasks as source of truth for status updates
+    const merged = [...serverTasks];
+    const serverIds = new Set(serverTasks.map(t => t.rowId));
+    // Add any cached tasks the server didn't return (e.g. recount-status SKUs dropped by server)
+    cached.forEach(ct => {
+      if (!serverIds.has(ct.rowId)) {
+        // Only keep it if it was submitted (has a qty) — don't resurface truly pending orphans
+        if (ct.submittedQty !== '' && ct.submittedQty !== undefined) {
+          merged.push({...ct, _fromCache: true});
+        }
+      }
+    });
+    return merged;
+  } catch(e) { return serverTasks; }
 }
 
 // ── API ──────────────────────────────────────────────────────
