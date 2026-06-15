@@ -767,19 +767,26 @@ async function handleLogin() {
 
       session = {staff:name, loginTime:Date.now()};
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      hideLoading();
-      renderTaskScreen();
-      showScreen('taskScreen');
 
       if (r3pending.length > 0) {
+        // Go straight to round 3 tab — skip rendering round 1 screen to avoid flash
+        showScreen('taskScreen');
         const tabEl = document.getElementById('roundTab3');
-        if (tabEl) setTimeout(() => switchRound(3, tabEl), 300);
+        if (tabEl) await switchRound(3, tabEl);
       } else if (r2pending.length > 0) {
+        // Go straight to round 2 tab — skip rendering round 1 screen to avoid flash
+        showScreen('taskScreen');
         const tabEl = document.getElementById('roundTab2');
-        if (tabEl) setTimeout(() => switchRound(2, tabEl), 300);
+        if (tabEl) await switchRound(2, tabEl);
       } else if (allTasks.length === 0 && r2tasks.length === 0 && r3tasks.length === 0) {
+        hideLoading();
         allTasks = await autoClaimFirstZone(name);
         renderTaskScreen();
+        showScreen('taskScreen');
+      } else {
+        hideLoading();
+        renderTaskScreen();
+        showScreen('taskScreen');
       }
       return;
     }
@@ -813,22 +820,23 @@ function loadCounterSession() {
       const r2pending = r2tasks.filter(t => t.recountQty === '' || t.recountQty === undefined || t.recountQty === null);
       const r3pending = r3tasks.filter(t => t.finalCount  === '' || t.finalCount  === undefined || t.finalCount  === null);
 
-      hideLoading();
-      renderTaskScreen();
-      showScreen('taskScreen');
-
       if (r3pending.length > 0) {
-        // Pending round 3 tasks take priority
+        showScreen('taskScreen');
         const tabEl = document.getElementById('roundTab3');
-        if (tabEl) setTimeout(() => switchRound(3, tabEl), 300);
+        if (tabEl) await switchRound(3, tabEl);
       } else if (r2pending.length > 0) {
-        // Pending round 2 tasks
+        showScreen('taskScreen');
         const tabEl = document.getElementById('roundTab2');
-        if (tabEl) setTimeout(() => switchRound(2, tabEl), 300);
+        if (tabEl) await switchRound(2, tabEl);
       } else if (allTasks.length === 0 && r2tasks.length === 0 && r3tasks.length === 0) {
-        // Truly no tasks at all — auto-claim next available zone
+        hideLoading();
         allTasks = await autoClaimFirstZone(name);
         renderTaskScreen();
+        showScreen('taskScreen');
+      } else {
+        hideLoading();
+        renderTaskScreen();
+        showScreen('taskScreen');
       }
     })
     .catch(() => { hideLoading(); initLogin(); });
