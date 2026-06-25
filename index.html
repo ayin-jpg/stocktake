@@ -1251,7 +1251,9 @@ async function submitCount() {
   // Route to correct action based on round and edit mode
   const round    = currentTask.round || 1;
   const isEditMode = currentTask.isEdit || false;
-  const action   = isEditMode ? 'editCount' : (round === 1 ? 'submitCount' : 'submitRecount');
+  const action   = isEditMode
+    ? (round === 1 ? 'editCount' : 'editRecount')
+    : (round === 1 ? 'submitCount' : 'submitRecount');
   const payload  = {
     action, round,
     rowId:currentTask.rowId, sku:currentTask.sku,
@@ -1283,10 +1285,11 @@ async function submitCount() {
     const task = taskList.find(t=>t.rowId===currentTask.rowId);
     if(task){
       if (isEditMode) {
-        // Edit — update qty and recalculate status locally
-        task.submittedQty = qty;
-        task.isEdit       = false;
-        // Status will be refreshed on next task load from server
+        // Edit — update the correct qty field based on round
+        if (round === 1) task.submittedQty = qty;
+        else if (round === 2) task.recountQty = qty;
+        else if (round === 3) task.finalCount  = qty;
+        task.isEdit = false;
       } else {
         task.status='Complete';
         task.notes=payload.notes;
@@ -1673,7 +1676,13 @@ function openRecountCount(rowId, round) {
   if (!currentTask) return;
   currentTask.round = round;
 
-  const isEdit = currentTask.status === 'Complete';
+  // Detect edit mode by whether the qty field has already been filled in —
+  // status alone is unreliable because recount rows stay as 'Recount Round 2/3'
+  // even after submission until the full round resolves.
+  const hasSubmitted = round === 2
+    ? (currentTask.recountQty !== '' && currentTask.recountQty !== undefined && currentTask.recountQty !== null)
+    : (currentTask.finalCount  !== '' && currentTask.finalCount  !== undefined && currentTask.finalCount  !== null);
+  const isEdit = hasSubmitted;
   currentTask.isEdit = isEdit;
 
   // Pre-fill quantity if editing an already-submitted recount
