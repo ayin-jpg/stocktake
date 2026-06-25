@@ -557,6 +557,7 @@ let pendingNextZone = null; // zone object queued up for acceptance
 let allStaffNames   = [];   // cached staff list for recount assignment
 let recountTasks    = [];   // recount tasks for current counter
 let currentRound    = 1;    // current counting round (1, 2, or 3)
+let currentZone     = null; // active zone for round 1 — only this zone's tasks are shown
 
 // ── DEMO DATA ───────────────────────────────────────────────
 const DEMO_STAFF = ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Henry','Isla','Jake','Karen','Leo','Mia','Noah','Olivia'];
@@ -757,6 +758,10 @@ async function handleLogin() {
         allTasks = await autoClaimFirstZone(name);
       }
     }
+    // Set active zone to the most recently assigned zone (last in list that is pending/in-progress)
+    const pendingTask = [...allTasks].reverse().find(t => t.status === 'Pending' || t.status === 'In Progress');
+    if (pendingTask) currentZone = pendingTask.zone;
+    else if (allTasks.length > 0) currentZone = allTasks[allTasks.length - 1].zone;
     session = {staff:name, loginTime:Date.now()};
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     hideLoading();
@@ -778,6 +783,10 @@ function loadCounterSession() {
       if (allTasks.length === 0) {
         allTasks = await autoClaimFirstZone(name);
       }
+      // Set active zone to the most recently assigned zone
+      const pendingTask = [...allTasks].reverse().find(t => t.status === 'Pending' || t.status === 'In Progress');
+      if (pendingTask) currentZone = pendingTask.zone;
+      else if (allTasks.length > 0) currentZone = allTasks[allTasks.length - 1].zone;
       hideLoading();
       renderTaskScreen();
       showScreen('taskScreen');
@@ -815,6 +824,8 @@ async function autoClaimFirstZone(staffName) {
         ? `${roundLabel} zone ${nextZone.zone} assigned — ${newTasks.length} SKUs`
         : `Zone ${nextZone.zone} assigned — ${newTasks.length} SKUs to count`;
       showToast(msg, 'success');
+      // Track active zone for round 1
+      if (!isRecount) currentZone = nextZone.zone;
       // If it's a recount zone, switch to the correct tab
       if (isRecount) {
         const tabEl = document.getElementById(round===2?'roundTab2':'roundTab3');
@@ -852,10 +863,10 @@ function renderTaskScreen() {
   document.getElementById('counterNameDisplay').textContent = name;
   document.getElementById('counterAvatar').textContent     = name.charAt(0).toUpperCase();
 
-  const total   = allTasks.length;
-  // A SKU is "done" as soon as the counter has physically entered a qty — regardless of
-  // what status the server has since assigned (Complete, Recount 2, etc.)
-  const done    = allTasks.filter(t => t.submittedQty !== '' && t.submittedQty !== undefined && t.submittedQty !== null).length;
+  // Only count tasks in the current zone for stats
+  const zoneTasks = currentZone ? allTasks.filter(t => t.zone === currentZone) : allTasks;
+  const total   = zoneTasks.length;
+  const done    = zoneTasks.filter(t => t.submittedQty !== '' && t.submittedQty !== undefined && t.submittedQty !== null).length;
   const pending = total - done;
 
   document.getElementById('statTotal').textContent   = total;
@@ -863,11 +874,11 @@ function renderTaskScreen() {
   document.getElementById('statDone').textContent    = done;
   document.getElementById('taskProgress').textContent = pending>0 ? `${pending} task${pending!==1?'s':''} remaining` : '✓ All done!';
 
-  // Show "I'm done" card when all current tasks are complete
+  // Show "I'm done" card when all current zone tasks are complete
   const zoneCard = document.getElementById('zoneCompleteCard');
   if (pending===0 && total>0) {
-    const zones = [...new Set(allTasks.map(t=>t.zone))].join(', ');
-    document.getElementById('zoneCompleteCardTitle').textContent = `Zone${zones.includes(',')?'s':''} ${zones} complete!`;
+    const zoneLabel = currentZone || [...new Set(allTasks.map(t=>t.zone))].join(', ');
+    document.getElementById('zoneCompleteCardTitle').textContent = `Zone ${zoneLabel} complete!`;
     document.getElementById('zoneCompleteCardSub').textContent   = `All ${total} SKUs counted. Tap below to receive your next zone.`;
     zoneCard.style.display = 'block';
   } else {
@@ -881,9 +892,13 @@ function renderTasks() {
   const search = document.getElementById('searchInput').value.toLowerCase();
 
   // Use correct task source based on current round
+  // For round 1, only show tasks belonging to the currently active zone
   const taskSource = currentRound > 1 ? recountTasks : allTasks;
+  const zoneTasks  = currentRound === 1 && currentZone
+    ? taskSource.filter(t => t.zone === currentZone)
+    : taskSource;
 
-  let filtered = taskSource.filter(t => {
+  let filtered = zoneTasks.filter(t => {
     const doneStatuses = ['Complete','Recount 2','Recount Round 2','Recount 3','Recount Round 3','Recount'];
     if (taskFilter==='pending') return t.status==='Pending';
     if (taskFilter==='recount') return t.taskType==='Recount 2' || t.taskType==='Recount 3' || t.taskType==='Recount';
@@ -1082,6 +1097,9 @@ async function acceptNextZone() {
     // Also set recountTasks directly so switchRound finds them immediately
     if (isRecount) {
       recountTasks = newTasks;
+    } else {
+      // Update active zone so task list only shows the new zone
+      currentZone = zoneToLoad;
     }
 
     hideLoading();
